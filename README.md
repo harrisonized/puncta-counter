@@ -28,3 +28,13 @@ I envision that this repo will have three modules.
 
    In this way, it makes it easy for a user to scroll through a repository and identify if a cell was misclassified.
 
+
+
+## Miscellaneous Notes
+
+To save Bokeh figures, you must install geckodriver:
+
+```
+sudo apt-get install firefox-geckodriver
+```
+
