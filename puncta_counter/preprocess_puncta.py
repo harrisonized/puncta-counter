@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
-"""Takes data/puncta.csv and data/nuclei.csv files and outputs a puncta_summary.csv
-Plots the items in nuclei.csv and puncta.csv
-
+"""Takes data/puncta.csv and data/nuclei.csv files, draws boundaries, then plots the boundaries
 This script is still in development and not ready for use
 """
 
@@ -14,12 +12,13 @@ import logging
 import datetime as dt
 import numpy as np
 import pandas as pd
-from scipy.stats import t
 
 from puncta_counter.src.preprocessing import reassign_puncta_to_nuclei
 from puncta_counter.src.columns import nuclei_cols, puncta_cols
-from puncta_counter.src.utils import dirname_n_times, camel_to_snake_case, flatten_columns
-from puncta_counter.src.plotting import save_fig_as_png, plot_single_scatter
+from puncta_counter.src.plotting import (save_fig_as_png, save_plot_as_png,
+                                         plot_circle_puncta_using_plotly, plot_ellipse_using_bokeh)
+from puncta_counter.src.summarize import generate_circle, generate_ellipse
+from puncta_counter.src.utils import dirname_n_times, camel_to_snake_case
 from puncta_counter.src.logger import configure_logger
 
 script_name = 'run_puncta_counter'
@@ -31,8 +30,6 @@ os.chdir(base_dir)
 # Functions
 # # parse_args
 # # preprocess_df
-# # generate_circle_bounding_boxes
-# # plot_circle_puncta_using_plotly
 # # main
 
 
@@ -44,6 +41,9 @@ def parse_args(args=None):
                         required=False, help="input directory")
     parser.add_argument("-o", "--output", dest="output_dir", default='data', action="store",
                         required=False, help="output directory")
+    parser.add_argument("-a", "--algos", dest="algos", nargs='+',
+                        default=['circle', 'min_vol_ellipse', 'confidence_ellipse'],
+                        action="store", required=False, help="limit scope for testing")
 
     # other
     parser.add_argument("-l", "--log-dir", dest="log_dir", default='log', action="store",
@@ -81,82 +81,10 @@ def preprocess_df(df, columns):
     return df_subset
 
 
-def generate_cirle_bounding_boxes(puncta):
-
-    puncta_summary = puncta.groupby(["image_number", "nuclei_object_number"]).agg(
-        {
-            "area": [sum, "count"],
-            "integrated_intensity": sum,
-            "center_x": [np.mean, np.std],
-            "center_y": [np.mean, np.std],
-        }
-    ).reset_index()
-    puncta_summary.columns = flatten_columns(puncta_summary.columns)
-
-    # derive effective radius
-    puncta_summary["center_std"] = np.sqrt(puncta_summary["center_x_std"]**2+puncta_summary["center_y_std"]**2)
-    puncta_summary["effective_radius_puncta"] = puncta_summary["center_std"].apply(lambda x: x*t.ppf(0.90, 2))  # 90% CI
-
-    # fillna
-    puncta_summary.loc[puncta_summary["effective_radius_puncta"].isna(), "effective_radius_puncta"
-    ] = puncta_summary.loc[puncta_summary["effective_radius_puncta"].isna(), "area_sum"].apply(
-        lambda x: np.sqrt(x/np.pi)
-    )
-    puncta_summary["bounding_box_min_x"] = puncta_summary["center_x_mean"] - puncta_summary["effective_radius_puncta"]
-    puncta_summary["bounding_box_max_x"] = puncta_summary["center_x_mean"] + puncta_summary["effective_radius_puncta"]
-    puncta_summary["bounding_box_min_y"] = puncta_summary["center_y_mean"] - puncta_summary["effective_radius_puncta"]
-    puncta_summary["bounding_box_max_y"] = puncta_summary["center_y_mean"] + puncta_summary["effective_radius_puncta"]
-
-    return puncta_summary
-
-
-def plot_circle_puncta_using_plotly(puncta_summary, puncta, image_number, title):
-
-    # get nuclei boundaries
-    shapes = list(
-        puncta_summary.loc[
-            (puncta_summary['image_number']==image_number)
-            , ["bounding_box_min_x",
-              "bounding_box_max_x",
-              "bounding_box_min_y",
-              "bounding_box_max_y",]
-        ]
-        .rename(columns={
-                    "bounding_box_min_x": "x0",
-                    "bounding_box_max_x": "x1",
-                    "bounding_box_min_y": "y0",
-                    "bounding_box_max_y": "y1",}
-               )
-        .apply(lambda x: {**{"type": "circle", 'xref':"x", 'yref':"y", 'line':{'width':1.5}}, **dict(x)}, axis=1)
-    )
-
-    # plot puncta
-    fig = plot_single_scatter(
-        puncta[puncta['image_number']==image_number].copy(),
-        x='center_x',
-        y='center_y',
-        title=title,
-        xlabel='x',
-        ylabel='y'
-    )
-
-    fig.layout.update(
-        xaxis = {'range': [-50, 1250], 'constrain': "domain"},
-        yaxis = {'range': [1050, -50], 'scaleanchor': 'x', 'scaleratio': 1},
-        shapes=shapes,
-        height=700,
-    )
-    fig.update_traces(
-        marker=dict(size=3)
-    )
-
-    return fig
-
-
 def main(args=None):
     """
     """
-    
+
     start_time = dt.datetime.now()
 
     # ----------------------------------------------------------------------
@@ -177,21 +105,13 @@ def main(args=None):
     logger.info(f"running script")
 
     # ----------------------------------------------------------------------
-    # Read and preprocess data
+    # Read data and filter
 
     # nuclei
     nuclei = pd.read_csv("data/nuclei.csv")
     nuclei = preprocess_df(nuclei, nuclei_cols)
     nuclei['effective_radius_nuclei'] = nuclei['area'].apply(lambda x: np.sqrt(x/np.pi))
     nuclei.to_csv('data/nuclei_subset.csv', index=None)
-    
-    # filter nuclei on eccentricity
-    nuclei_subset = nuclei[
-        (nuclei['eccentricity'] < 0.69)
-        & (nuclei['major_axis_length'] < 128)
-    ].copy()
-    filename_from_image_number = dict(zip(nuclei_subset['image_number'], nuclei_subset['file_name_tif']))
-
 
     # puncta
     puncta = pd.read_csv("data/puncta.csv")
@@ -200,8 +120,11 @@ def main(args=None):
     puncta.to_csv('data/puncta_subset.csv', index=None)
 
 
-    # ----------------------------------------------------------------------
-    # Puncta Only using Plotly
+    # filter nuclei on eccentricity
+    nuclei_subset = nuclei[
+        (nuclei['eccentricity'] < 0.69)
+        & (nuclei['major_axis_length'] < 128)
+    ].copy()
 
     # filter puncta for nuclei
     puncta = pd.merge(
@@ -212,20 +135,50 @@ def main(args=None):
         how="left",
     ).dropna(subset=['nuclei_object_number'])  # left join without duplicates
 
-    puncta_summary = generate_cirle_bounding_boxes(puncta)
-
-    # plot puncta
-    logger.info(f"generating figures")
-    for image_number in tqdm(nuclei_subset['image_number'].unique()):
-        file_name_tif = filename_from_image_number[image_number].split('.')[0]
-        fig = plot_circle_puncta_using_plotly(puncta_summary, puncta, image_number, file_name_tif)
-        save_fig_as_png(fig, f'figures/circle/{file_name_tif}.png', height=800, scale=1)
+    filename_from_image_number = dict(zip(nuclei_subset['image_number'], nuclei_subset['file_name_tif']))
 
 
     # ----------------------------------------------------------------------
-    # Nuclei and Puncta using Bokeh
+    # Circle Bounding Boxes, Plot using Plotly
+
+    if 'circle' in args.algos:
+
+        logger.info(f"Generating circle bounding boxes...")
+        puncta_summary = generate_circle(puncta)
+        for image_number in tqdm(nuclei_subset['image_number'].unique()):
+            file_name_tif = filename_from_image_number[image_number].split('.')[0]
+            fig = plot_circle_puncta_using_plotly(puncta_summary, puncta, image_number, file_name_tif)
+            save_fig_as_png(fig, f'figures/circle/{file_name_tif}.png', height=800, scale=1)
 
 
+    # ----------------------------------------------------------------------
+    # Mimimum Bounding Ellipse
+
+    if 'min_vol_ellipse' in args.algos:
+
+        logger.info(f"Generating minimum bounding ellipse...")
+        puncta_summary = generate_ellipse(puncta, algo='min_vol_ellipse')  # this has a bug
+        for image_number in tqdm(nuclei_subset['image_number'].unique()):
+            file_name_tif = filename_from_image_number[image_number].split('.')[0]
+            plot = plot_ellipse_using_bokeh(puncta_summary, puncta, image_number, file_name_tif)
+            save_plot_as_png(plot, f"figures/min_vol_ellipse/{file_name_tif}.png")
+
+
+    # ----------------------------------------------------------------------
+    # Confidence Ellipse
+
+    if 'confidence_ellipse' in args.algos:
+
+        logger.info(f"Generating confidence ellipse...")
+        puncta_summary = generate_ellipse(puncta, algo='confidence_ellipse') 
+        for image_number in tqdm(nuclei_subset['image_number'].unique()):
+            file_name_tif = filename_from_image_number[image_number].split('.')[0]
+            plot = plot_ellipse_using_bokeh(puncta_summary, puncta, image_number, file_name_tif)
+            save_plot_as_png(plot, f"figures/confidence_ellipse/{file_name_tif}.png")
+
+
+    # ----------------------------------------------------------------------
+    # End
 
     runtime = (dt.datetime.now() - start_time).total_seconds()
     logger.info(f"Script completed in {int(runtime // 60)} min {round(runtime % 60, 2)} sec")
