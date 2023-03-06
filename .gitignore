@@ -1,3 +1,7 @@
 .ipynb_checkpoints
-cppipe
-images/other
+*.egg-info
+data
+figures
+images
+log
+ref
