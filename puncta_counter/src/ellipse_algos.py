@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 # # min_vol_ellipse
 
 
-def confidence_ellipse(P, aweights=None, n_std=1, **kwargs):
-    """Source code from: https://matplotlib.org/stable/gallery/statistics/confidence_ellipse.html
+def confidence_ellipse(P, aweights=None, n_std=2.5, **kwargs):
+    """Source code adapted from: https://matplotlib.org/stable/gallery/statistics/confidence_ellipse.html
     Note that aweights are required to prevent this algorithm from being sensitive to outliers
     This is only meant to be used for 2D
     """
@@ -23,34 +23,27 @@ def confidence_ellipse(P, aweights=None, n_std=1, **kwargs):
 
     cov = np.cov(x, y, aweights=aweights)
     pearson = cov[0, 1]/np.sqrt(cov[0, 0] * cov[1, 1])
+
+    # Use a special case to obtain the eigenvalues of this 2d dataset.
+    minor_radius, major_radius = sorted(
+    	[np.sqrt(max(0, 1 - pearson)), np.sqrt(max(0, 1 + pearson))]
+    )
     
-    # Using a special case to obtain the eigenvalues of this two-dimensionl dataset.
-    major_axis_length = np.sqrt(max(0, 1 + pearson))
-    minor_axis_length = np.sqrt(max(0, 1 - pearson))
-
-
-    # Calculate center
+    # calculate weighted center
     center_x = sum(x*aweights)/sum(aweights) if aweights else np.mean(x)
     center_y = sum(y*aweights)/sum(aweights) if aweights else np.mean(y)
-   
-
-    # Calculating the stdandard deviation of x
-
-    # calculating the stdandard deviation of y
-    scale_height = np.sqrt(cov[1, 1]) * n_std
     
-    # Perform PCA
+    # PCA
     eig_vals, eig_vecs = np.linalg.eig(cov)
-
-    if eig_vals[0] > eig_vals[1]:
-        major_axis_length = 2 * np.sqrt(cov[0, 0]) * n_std
-        minor_axis_length = 2 * np.sqrt(cov[1, 1]) * n_std
-        orientation = np.arcsin(eig_vecs[0, 0])/np.pi*180
+    if eig_vals[0] >= eig_vals[1]:
+        major_axis_length = (2 * major_radius) * np.sqrt(cov[0, 0]) * n_std
+        minor_axis_length = (2 * minor_radius) * np.sqrt(cov[1, 1]) * n_std
+        orientation = np.arccos(eig_vecs[1, 0])/np.pi*180
     else:
-        major_axis_length = 2 * np.sqrt(cov[1, 1]) * n_std
-        minor_axis_length = 2 * np.sqrt(cov[0, 0]) * n_std
+        major_axis_length = (2 * major_radius) * np.sqrt(cov[1, 1]) * n_std
+        minor_axis_length = (2 * minor_radius) * np.sqrt(cov[0, 0]) * n_std
         orientation = np.arcsin(eig_vecs[1, 0])/np.pi*180
-    
+
     return center_x, center_y, major_axis_length, minor_axis_length, orientation
 
 
