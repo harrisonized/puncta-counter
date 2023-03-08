@@ -43,8 +43,8 @@ def parse_args(args=None):
 
     parser.add_argument("-a", "--algos", dest="algos", nargs='+',
     	                default=['confidence_ellipse',
-    	                		 'min_vol_ellipse',  # bugs
-    	                		 'circle',  # deprecate
+    	                		 # 'min_vol_ellipse',  # bugs
+    	                		 # 'circle',  # deprecate
     	                		 ],
                         action="store", required=False, help="limit scope for testing")
 
