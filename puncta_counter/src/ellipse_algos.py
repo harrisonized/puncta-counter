@@ -1,12 +1,60 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 # Functions
-# # min_vol_ellipse
 # # confidence_ellipse
+# # min_vol_ellipse
 
 
-def min_vol_ellipse(P, tolerance=0.01):
+def confidence_ellipse(P, aweights=None, n_std=1, **kwargs):
+    """Source code from: https://matplotlib.org/stable/gallery/statistics/confidence_ellipse.html
+    Note that aweights are required to prevent this algorithm from being sensitive to outliers
+    This is only meant to be used for 2D
+    """
+    x, y = P
+    if x.size != y.size:
+        raise ValueError("x and y must be the same size")
+
+    # dimension check
+    # for a 2d image, d=2 and N is the number of points
+    if x.size <= 2:
+        return np.nan, np.nan, np.nan, np.nan, np.nan
+
+    cov = np.cov(x, y, aweights=aweights)
+    pearson = cov[0, 1]/np.sqrt(cov[0, 0] * cov[1, 1])
+    
+    # Using a special case to obtain the eigenvalues of this two-dimensionl dataset.
+    major_axis_length = np.sqrt(max(0, 1 + pearson))
+    minor_axis_length = np.sqrt(max(0, 1 - pearson))
+
+
+    # Calculate center
+    center_x = sum(x*aweights)/sum(aweights) if aweights else np.mean(x)
+    center_y = sum(y*aweights)/sum(aweights) if aweights else np.mean(y)
+   
+
+    # Calculating the stdandard deviation of x
+
+    # calculating the stdandard deviation of y
+    scale_height = np.sqrt(cov[1, 1]) * n_std
+    
+    # Perform PCA
+    eig_vals, eig_vecs = np.linalg.eig(cov)
+
+    if eig_vals[0] > eig_vals[1]:
+        major_axis_length = 2 * np.sqrt(cov[0, 0]) * n_std
+        minor_axis_length = 2 * np.sqrt(cov[1, 1]) * n_std
+        orientation = np.arcsin(eig_vecs[0, 0])/np.pi*180
+    else:
+        major_axis_length = 2 * np.sqrt(cov[1, 1]) * n_std
+        minor_axis_length = 2 * np.sqrt(cov[0, 0]) * n_std
+        orientation = np.arcsin(eig_vecs[1, 0])/np.pi*180
+    
+    return center_x, center_y, major_axis_length, minor_axis_length, orientation
+
+
+def min_vol_ellipse(P, tolerance=0.01, **kwargs):
     # See: https://www.mathworks.com/matlabcentral/fileexchange/9542-minimum-volume-enclosing-ellipsoid
     # Original author: Nima Moshtagh (nima@seas.upenn.edu)
     # Translated to Python by Harrison Wang
@@ -99,66 +147,3 @@ def min_vol_ellipse(P, tolerance=0.01):
     max_y = center_y + np.sqrt(inv_A[1][1])
     
     return center_x, center_y, min_x, max_x, min_y, max_y
-
-
-def confidence_ellipse(P, n_std=3.0, facecolor='none', **kwargs):
-    """Source code from: https://matplotlib.org/stable/gallery/statistics/confidence_ellipse.html
-    Note that this algorithm is very sensitive to outliers
-    """
-    
-    x, y = P
-    # if x.size != y.size:
-    #     raise ValueError("x and y must be the same size")  # note: this is impossible
-
-    # dimension check
-    # for a 2d image, d=2 and N is the number of points
-    d, N = P.shape
-    if N <= d:
-        return np.nan, np.nan, np.nan, np.nan, np.nan
-
-    cov = np.cov(x, y)
-    pearson = cov[0, 1]/np.sqrt(cov[0, 0] * cov[1, 1])
-    
-    # Using a special case to obtain the eigenvalues of this two-dimensionl dataset.
-    major_axis_length = np.sqrt(1 + pearson)
-    minor_axis_length = np.sqrt(1 - pearson)
-    
-    # Calculating the stdandard deviation of x
-    scale_x = np.sqrt(cov[0, 0]) * n_std
-    center_x = np.mean(x)
-
-    # calculating the stdandard deviation of y
-    scale_y = np.sqrt(cov[1, 1]) * n_std
-    center_y = np.mean(y)
-    
-    
-    # calculating orientation "angle"
-    eig_vals, eig_vecs = np.linalg.eig(cov)
-
-    if eig_vals[0] > eig_vals[1]:
-        width = major_axis_length * 2
-        height = minor_axis_length * 2
-    else:
-        width = minor_axis_length * 2
-        height = major_axis_length * 2
-    orientation = np.arccos(eig_vecs[0, 0])/np.pi*180  # not entire certain this is it
-    
-    minor_axis_length, major_axis_length = sorted((width * scale_x, height * scale_y))
-    
-    return center_x, center_y, minor_axis_length, major_axis_length, orientation
-    
-    # matplotlib
-    # from matplotlib.patches import Ellipse
-    # ellipse = Ellipse((0, 0),
-    #     width=width,
-    #     height=height,
-    #     facecolor=facecolor,
-    #     **kwargs)    
-
-    # transf = transforms.Affine2D() \
-    #     .rotate_deg(orientation) \
-    #     .scale(scale_x, scale_y) \
-    #     .translate(center_x, center_y)
-
-    # ellipse.set_transform(transf + ax.transData)
-    # return ax.add_patch(ellipse)

@@ -42,7 +42,7 @@ def generate_circle(puncta):
     return puncta_summary
 
 
-def generate_ellipse(puncta, algo='min_vol_ellipse'):
+def generate_ellipse(puncta, algo='confidence_ellipse'):
     """Generates an ellipse, which comes with the following dimensions:
     ["center_x",
      "center_y",
@@ -55,20 +55,32 @@ def generate_ellipse(puncta, algo='min_vol_ellipse'):
     """
         
     if algo == 'min_vol_ellipse':
-        ellipse_func = lambda x: min_vol_ellipse(np.transpose(np.array(x)), tolerance=0.05)
+        ellipse_func = min_vol_ellipse
     elif algo == 'confidence_ellipse':
-        ellipse_func = lambda x: confidence_ellipse(np.transpose(np.array(x)), n_std=2)
+        ellipse_func = confidence_ellipse
     else:
         raise ValueError("Choose one: ['min_vol_ellipse', 'confidence_ellipse']")
 
     puncta['center'] = puncta[['center_x', 'center_y']].apply(list, axis=1)
-    puncta_summary = puncta.groupby(['image_number', 'object_number'])[['center']].agg(list).reset_index().copy()
+    puncta['total_intensity'] = puncta["integrated_intensity"] * puncta["area"]
+
+    puncta_summary = (
+        puncta
+        .groupby(['image_number', 'object_number'])[['center', "total_intensity"]]
+        .agg(list)
+        .reset_index()
+    ).copy()
+
     puncta_summary[
-        ["center_x", "center_y", "minor_axis_length", "major_axis_length", "orientation"]
+        ["center_x", "center_y", "major_axis_length", "minor_axis_length", "orientation"]
     ] = pd.DataFrame(
-        puncta_summary["center"]
-        .apply(ellipse_func)
+        puncta_summary[["center", 'total_intensity']]
+        .apply(lambda x: ellipse_func(
+            np.transpose(np.array(x['center'])),
+            aweights=x['total_intensity'], n_std=2.5,  # algo='confidence_ellipse'
+            tolerance=0.05,  # algo='min_vol_ellipse'
+        ), axis=1)
         .to_list()
     )
-
+    
     return puncta_summary
