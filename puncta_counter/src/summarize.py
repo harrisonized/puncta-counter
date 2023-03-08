@@ -2,17 +2,23 @@ import numpy as np
 import pandas as pd
 from scipy.stats import t
 
-from puncta_counter.src.ellipse_algos import min_vol_ellipse, confidence_ellipse
-from puncta_counter.src.utils import flatten_columns
+from puncta_counter.utils.common import flatten_columns
+from puncta_counter.utils.ellipse_algos import confidence_ellipse, min_vol_ellipse
+from puncta_counter.utils.plotting import (plot_circle_using_bokeh,
+                                           plot_ellipse_using_bokeh)
 
 
 # Functions
 # # generate_circle
 # # generate_ellipse
+# # plot_nuclei_circles_puncta
+# # plot_nuclei_ellipses_puncta
 
 
 def generate_circle(puncta):
-    """Generates an "effective radius", which is then plotted using plotly
+    """Generates an "effective radius" by assuming that the standard deviations in each dimension are uncorrelated
+    This was a first pass used to build plotting capabilities
+    This algorithm should be deprecated, as it is highly sensitive to outliers
     """
 
     puncta_summary = puncta.groupby(["image_number", "nuclei_object_number"]).agg(
@@ -49,17 +55,8 @@ def generate_ellipse(puncta, algo='confidence_ellipse'):
      "minor_axis_length",
      "major_axis_length",
      "orientation"]
-
-    This is plotted using Bokeh, because Plotly currently cannot plot rotated ellipses
     In the future, I may change this to matplotlib instead of Bokeh, as Bokeh is very resource heavy
     """
-        
-    if algo == 'min_vol_ellipse':
-        ellipse_func = min_vol_ellipse
-    elif algo == 'confidence_ellipse':
-        ellipse_func = confidence_ellipse
-    else:
-        raise ValueError("Choose one: ['min_vol_ellipse', 'confidence_ellipse']")
 
     puncta['center'] = puncta[['center_x', 'center_y']].apply(list, axis=1)
     puncta['total_intensity'] = puncta["integrated_intensity"] * puncta["area"]
@@ -71,16 +68,135 @@ def generate_ellipse(puncta, algo='confidence_ellipse'):
         .reset_index()
     ).copy()
 
-    puncta_summary[
-        ["center_x", "center_y", "major_axis_length", "minor_axis_length", "orientation"]
-    ] = pd.DataFrame(
-        puncta_summary[["center", 'total_intensity']]
-        .apply(lambda x: ellipse_func(
-            np.transpose(np.array(x['center'])),
-            aweights=x['total_intensity'], n_std=2.5,  # algo='confidence_ellipse'
-            tolerance=0.05,  # algo='min_vol_ellipse'
-        ), axis=1)
-        .to_list()
-    )
+
+    if algo == 'confidence_ellipse':
+        puncta_summary[
+            ["center_x", "center_y", "major_axis_length", "minor_axis_length", "orientation"]
+        ] = pd.DataFrame(
+            puncta_summary[["center", 'total_intensity']]
+            .apply(lambda x: confidence_ellipse(
+                np.transpose(np.array(x['center'])),
+                aweights=x['total_intensity'], n_std=2.5,  # algo='confidence_ellipse'
+                tolerance=0.05,  # algo='min_vol_ellipse'
+            ), axis=1)
+            .to_list()
+        )
+
+    elif algo == 'min_vol_ellipse':
+        puncta_summary[
+            ["center_x", "center_y", "major_axis_length", "minor_axis_length", "orientation"]
+        ] = pd.DataFrame(
+            puncta_summary["center"]
+            .apply(lambda x: np.transpose(np.array(x)))
+            .apply(lambda x: min_vol_ellipse(x, tolerance=0.05))
+            .to_list()
+        )
+
+    else:
+        raise ValueError("Choose one: ['min_vol_ellipse', 'confidence_ellipse']")
     
     return puncta_summary
+
+
+def plot_nuclei_circles_puncta(nuclei, circles, puncta, title=None):
+    """Build plot
+    """
+
+    # nuclei
+    nuclei_data = nuclei[["object_number", "center_x", "center_y", "major_axis_length", "minor_axis_length", "angle"]]
+    plot = plot_ellipse_using_bokeh(
+        nuclei_data,
+        nuclei_data,
+        x='center_x',
+        y='center_y',
+        height="major_axis_length",
+        width="minor_axis_length",
+        angle='angle',
+        text="object_number",
+        title=title,
+        fill_color='#000fff',  # blue
+    )
+
+    # circle
+    circles_data = circles[["nuclei_object_number", "center_x_mean", "center_y_mean", "effective_radius_puncta"]]
+    plot = plot_circle_using_bokeh(
+        circles_data,
+        circles_data,
+        x='center_x_mean',
+        y='center_y_mean',
+        size="effective_radius_puncta",
+        text="nuclei_object_number",
+        text_color='orange',
+        fill_color='#097969',  # green
+        line_alpha=0,
+        plot=plot
+    )
+
+    # puncta
+    puncta_data = puncta[["object_number", "center_x", "center_y", "major_axis_length", "minor_axis_length", "angle"]]
+    plot = plot_ellipse_using_bokeh(
+        puncta_data,
+        x='center_x',
+        y='center_y',
+        height="major_axis_length",
+        width="minor_axis_length",
+        angle='angle',
+        fill_color='#ff2b00',  # red
+        line_alpha=0,
+        plot=plot
+    )
+
+    return plot
+
+
+def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
+    """Build plot
+    """
+
+    # nuclei
+    nuclei_data = nuclei[["object_number", "center_x", "center_y", "major_axis_length", "minor_axis_length", "angle"]]
+    plot = plot_ellipse_using_bokeh(
+        nuclei_data,
+        nuclei_data,
+        x='center_x',
+        y='center_y',
+        height="major_axis_length",
+        width="minor_axis_length",
+        angle='angle',
+        text="object_number",
+        title=title,
+        fill_color='#000fff',  # blue
+    )
+
+    # confidence_ellipse
+    ellipses_data = ellipses[["object_number", "center_x", "center_y", "major_axis_length", "minor_axis_length", "angle"]]
+    plot = plot_ellipse_using_bokeh(
+        ellipses_data,
+        ellipses_data,
+        x='center_x',
+        y='center_y',
+        height="major_axis_length",
+        width="minor_axis_length",
+        angle='angle',
+        text="object_number",
+        text_color='orange',
+        fill_color='#097969',  # green
+        line_alpha=0,
+        plot=plot
+    )
+
+    # puncta
+    puncta_data = puncta[["object_number", "center_x", "center_y", "major_axis_length", "minor_axis_length", "angle"]]
+    plot = plot_ellipse_using_bokeh(
+        puncta_data,
+        x='center_x',
+        y='center_y',
+        height="major_axis_length",
+        width="minor_axis_length",
+        angle='angle',
+        fill_color='#ff2b00',  # red
+        line_alpha=0,
+        plot=plot
+    )
+
+    return plot

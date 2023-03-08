@@ -1,11 +1,39 @@
 import numpy as np
 import pandas as pd
-from puncta_counter.src.columns import puncta_cols
-
+from puncta_counter.etc.columns import puncta_cols
+from puncta_counter.utils.common import camel_to_snake_case
 
 # Functions
+# # preprocess_df
 # # find_nearest_point
 # # reassign_puncta_to_nuclei
+
+
+def preprocess_df(df, columns):
+    """General preprocessing steps"""
+
+    # clean column names
+    df.columns = [camel_to_snake_case(col).replace("__", "_") for col in df.columns]
+    df.columns = [
+        (camel_to_snake_case(col)
+         .replace("area_shape_", "")
+         .replace('minimum', 'min')
+         .replace("maximum", 'max')
+         .replace('_masked_xist', "")
+         .replace('_intensity', '')
+        )
+        for col in df.columns
+    ]
+    
+    # puncta only
+    intensity_cols = [col for col in df.columns if 'intensity_' in col]
+    df = df.rename(columns=dict(
+        zip(intensity_cols, ['_'.join(col.split('_')[::-1]) for col in intensity_cols])
+    ))
+
+    df_subset = df[columns].copy()
+
+    return df_subset
 
 
 def find_nearest_point(point, points:list):
