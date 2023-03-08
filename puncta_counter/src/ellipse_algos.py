@@ -34,6 +34,7 @@ def confidence_ellipse(P, aweights=None, n_std=2.5, **kwargs):
     center_y = sum(y*aweights)/sum(aweights) if aweights else np.mean(y)
     
     # PCA
+    # Note that this is NOT the equivalent of SVD, even in 2D!
     eig_vals, eig_vecs = np.linalg.eig(cov)
     if eig_vals[0] >= eig_vals[1]:
         major_axis_length = (2 * major_radius) * np.sqrt(cov[0, 0]) * n_std
