@@ -134,12 +134,13 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
         text="object_number",
         text_color='orange',
         fill_color='#097969',  # green
+        fill_alpha=0.9,
         line_alpha=0,
         plot=plot
     )
 
     # puncta
-    puncta_data = puncta[["object_number", "center_x", "center_y", "major_axis_length", "minor_axis_length", "angle"]]
+    puncta_data = puncta[["object_number", "center_x", "center_y", "major_axis_length", "minor_axis_length", "angle", "fill_alpha"]]
     plot = plot_ellipse_using_bokeh(
         puncta_data,
         x='center_x',
@@ -148,6 +149,7 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
         width="minor_axis_length",
         angle='angle',
         fill_color='#ff2b00',  # red
+        fill_alpha='fill_alpha',
         line_alpha=0,
         plot=plot
     )

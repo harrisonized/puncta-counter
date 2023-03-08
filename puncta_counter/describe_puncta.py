@@ -4,6 +4,7 @@
 This script is still in development and not ready for use
 As of 03/08/2023, this script is almost ready to use, but has some bugs.
 """
+
 import os
 from os.path import join as ospj
 from tqdm import tqdm
@@ -80,22 +81,32 @@ def main(args=None):
     # ----------------------------------------------------------------------
     # Read and filter data
 
+
     # Nuclei
     nuclei = pd.read_csv("data/nuclei.csv")
     nuclei = preprocess_df(nuclei, nuclei_cols)
     nuclei['effective_radius_nuclei'] = nuclei['area'].apply(lambda x: np.sqrt(x/np.pi))
     nuclei['angle'] = nuclei['orientation'].apply(lambda x: x/180*np.pi)
+    
     nuclei_subset = nuclei[
         (nuclei['eccentricity'] < 0.69)
         & (nuclei['major_axis_length'] < 128)
     ].copy()
     nuclei_subset.to_csv('data/nuclei_subset.csv', index=None)
 
+
     # Puncta
     puncta = pd.read_csv("data/puncta.csv")
     puncta = preprocess_df(puncta, puncta_cols)
     puncta = reassign_puncta_to_nuclei(puncta, nuclei)
     puncta['angle'] = puncta['orientation'].apply(lambda x: x/180*np.pi)
+
+    min_scale = 0.7  # rescale to half the intensity ~1/np.sqrt(2) at the lowest brightness
+    intensity_col = 'mean_intensity'
+    puncta['fill_alpha'] = (puncta[intensity_col]-puncta[intensity_col].min()) / (
+        puncta[intensity_col].max()-puncta[intensity_col].min()
+    )*(1-min_scale)+(min_scale)
+
     puncta_subset = pd.merge(
         left=nuclei_subset[["image_number", 'object_number']],
         right=puncta.loc[:, puncta.columns != 'object_number'],
@@ -103,9 +114,11 @@ def main(args=None):
         right_on=['image_number', 'nuclei_object_number'],
         how="left",
     ).dropna(subset=['nuclei_object_number'])  # use nuclei_subset to filter puncta
-    puncta.to_csv('data/puncta_subset.csv', index=None)
+    puncta_subset.to_csv('data/puncta_subset.csv', index=None)
+
 
     filename_for_image_number = dict(zip(nuclei_subset['image_number'], nuclei_subset['file_name_tif']))
+
 
     # ----------------------------------------------------------------------
     # Confidence Ellipse
@@ -134,7 +147,6 @@ def main(args=None):
     if 'min_vol_ellipse' in args.algos:
 
         logger.info(f"Generating minimum bounding ellipse...")
-
 
         ellipses = generate_ellipse(puncta_subset, algo='min_vol_ellipse')  # this has a bug
         ellipses['angle'] = ellipses['orientation'].apply(lambda x: x/180*np.pi)

@@ -71,6 +71,7 @@ def plot_ellipse_using_bokeh(
         text=None,
         title=None,
         fill_color='#000fff',  # blue
+        fill_alpha=1,
         text_color='white',
         line_alpha=1.2,
         line_width=0,
@@ -93,6 +94,7 @@ def plot_ellipse_using_bokeh(
         height=height, angle=angle,
         line_color='#FFFFFF',
         fill_color=fill_color,
+        fill_alpha=fill_alpha,
         line_width=line_width,
         line_alpha=line_alpha,
     )
@@ -120,6 +122,7 @@ def plot_circle_using_bokeh(
         text=None,
         title=None,
         fill_color='#000fff',  # blue
+        fill_alpha=1,
         text_color='white',
         line_alpha=1.2,
         line_width=0,
@@ -142,6 +145,7 @@ def plot_circle_using_bokeh(
         size=size,
         line_color='#FFFFFF',
         fill_color=fill_color,
+        fill_alpha=fill_alpha,
         line_width=line_width,
         line_alpha=line_alpha,
     )
