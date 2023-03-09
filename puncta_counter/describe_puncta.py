@@ -136,7 +136,7 @@ def main(args=None):
                 puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
             )
 
-            save_plot_as_png(plot, f"figures/ellipses/confidence_ellipse/{title}.png")
+            save_plot_as_png(plot, f"figures/confidence_ellipse/{title}.png")
 
     # ----------------------------------------------------------------------
     # Mimimum Bounding Ellipse
