@@ -16,13 +16,13 @@ from puncta_counter.etc.columns import ellipse_cols
 # # plot_nuclei_circles_puncta
 
 # Note
-# # ellipse_cols = ["center_x", "center_y", "major_axis_length", "minor_axis_length", "orientation"] 
+# # ellipse_cols = ["center_x", "center_y", "major_axis_length", "minor_axis_length", "orientation"]
 
 def generate_ellipse(
         puncta,
         algo='confidence_ellipse',
         n_std=2,  # algo='confidence_ellipse'
-        tolerance=0.05  # algo='min_vol_ellipse'
+        tolerance=0.01  # algo='min_vol_ellipse'
     ):
     """Generates an ellipse, which comes with the following dimensions:
     ["center_x",

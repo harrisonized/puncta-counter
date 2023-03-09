@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from bokeh.models.annotations import Title
-from bokeh.models import Plot, ColumnDataSource, Ellipse, Circle, Grid, LinearAxis, Text
+from bokeh.models import Plot, LinearAxis, Grid, ColumnDataSource, Ellipse, Circle, Scatter, Text
 from bokeh.io import export_png
 
 
@@ -16,6 +16,7 @@ from bokeh.io import export_png
 # # instantiate_plot_bokeh
 # # plot_ellipse_using_bokeh
 # # plot_circle_using_bokeh
+# # plot_scatter_using_bokeh
 
 
 def save_plot_as_png(plot, filepath):
@@ -28,8 +29,8 @@ def save_plot_as_png(plot, filepath):
 
 def instantiate_plot_bokeh(
     title=None,
-    fig_width=1000,
-    fig_height=800,
+    width=1000,
+    height=800,
     toolbar_location=None,
     xaxis_position='above',
     yaxis_position='left',
@@ -38,7 +39,8 @@ def instantiate_plot_bokeh(
 ):
     plot = Plot(
         title=Title(text=title),
-        width=fig_width, height=fig_height,
+        width=width,
+        height=height,
         match_aspect=True,
         toolbar_location=toolbar_location
     )
@@ -163,5 +165,44 @@ def plot_circle_using_bokeh(
             text_font_size = {'value': '13px'}
         )
         plot.add_glyph(text_data_source, text_glyph)
+    
+    return plot
+
+
+def plot_scatter_using_bokeh(
+        column_data,
+        x='x',
+        y='y',
+        size=4,
+        title=None,
+        plot=None,
+        width=400,
+        height=400,
+        x_range=[-10, 10],
+        y_range=[-10, 10],
+    ):
+    
+    """Input a dataframe: df[['x', 'y', 'size']]
+    """
+    
+    if plot is None:
+        plot=instantiate_plot_bokeh(
+            width=width,
+            height=height,
+            x_range=x_range,
+            y_range=y_range,
+        )
+        
+    if title:
+        plot.title = Title(text=title)
+
+    column_data_source = ColumnDataSource(column_data)
+        
+    scatter_glyph = Scatter(
+        x=x,
+        y=y,
+        size=size,
+    )
+    plot.add_glyph(column_data_source, scatter_glyph)
     
     return plot

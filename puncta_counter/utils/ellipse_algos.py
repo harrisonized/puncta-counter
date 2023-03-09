@@ -54,7 +54,6 @@ def min_vol_ellipse(P, tolerance=0.05, **kwargs):
     """See: https://www.mathworks.com/matlabcentral/fileexchange/9542-minimum-volume-enclosing-ellipsoid
     Original author: Nima Moshtagh (nima@seas.upenn.edu)
     Translated to Python by Harrison Wang
-    There's a bug in the current implementation
     """
 
     # Data Points
@@ -120,16 +119,18 @@ def min_vol_ellipse(P, tolerance=0.05, **kwargs):
     
     # original return value
     # return A, c
-    
+
     center_x = c[0][0]
     center_y = c[1][0]
 
-    # bounding box
-    inv_A = np.linalg.inv(A)  # diagonals are the important terms
-
-    min_x = center_x - np.sqrt(inv_A[0][0])
-    max_x = center_x + np.sqrt(inv_A[0][0])
-    min_y = center_y - np.sqrt(inv_A[1][1])
-    max_y = center_y + np.sqrt(inv_A[1][1])
+    eig_vals, eig_vecs = np.linalg.eig(A)
+    if eig_vals[0] >= eig_vals[1]:
+        major_axis_length = 2/np.sqrt(eig_vals[1])
+        minor_axis_length = 2/np.sqrt(eig_vals[0])
+        orientation = np.arcsin(eig_vecs[0, 1])/np.pi*180
+    else:
+        major_axis_length = 2/np.sqrt(eig_vals[0])
+        minor_axis_length = 2/np.sqrt(eig_vals[1])
+        orientation = np.arccos(eig_vecs[0, 1])/np.pi*180
     
-    return center_x, center_y, max_x-min_x, max_y-min_y, 0
+    return center_x, center_y, major_axis_length, minor_axis_length, orientation

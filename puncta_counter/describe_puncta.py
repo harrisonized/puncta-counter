@@ -125,7 +125,7 @@ def main(args=None):
 
         logger.info(f"Generating confidence ellipse...")
         ellipses = generate_ellipse(puncta_subset, algo='confidence_ellipse')
-        ellipses[['image_number', 'object_number'] + ellipse_cols].to_csv('data/confidence_ellipse.csv', index=None)
+        ellipses[['image_number', 'object_number'] + ellipse_cols].to_csv('data/ellipses/confidence_ellipse.csv', index=None)
 
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
             title = filename_for_image_number[image_number].split('.')[0]
@@ -146,7 +146,7 @@ def main(args=None):
 
         logger.info(f"Generating minimum bounding ellipse...")
         ellipses = generate_ellipse(puncta_subset, algo='min_vol_ellipse')  # this has a bug
-        ellipses[['image_number', 'object_number'] + ellipse_cols].to_csv('data/min_vol_ellipse.csv', index=None)
+        ellipses[['image_number', 'object_number'] + ellipse_cols].to_csv('data/ellipses/min_vol_ellipse.csv', index=None)
 
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
             title = filename_for_image_number[image_number].split('.')[0]
@@ -157,7 +157,7 @@ def main(args=None):
                 puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
             )
 
-            save_plot_as_png(plot, f"figures/ellipses/min_vol_ellipse/{title}.png")
+            save_plot_as_png(plot, f"figures/min_vol_ellipse/{title}.png")
 
     # ----------------------------------------------------------------------
     # Circles
@@ -169,7 +169,7 @@ def main(args=None):
         circles = generate_circle(puncta_subset)
         circles[['image_number', "nuclei_object_number",
                  "center_x_mean", "center_y_mean",
-                 "effective_radius_puncta"]].to_csv('data/circles.csv', index=None)
+                 "effective_radius_puncta"]].to_csv('data/ellipses/circles.csv', index=None)
 
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
             title = filename_for_image_number[image_number].split('.')[0]
@@ -180,7 +180,7 @@ def main(args=None):
                 puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
             )
 
-            save_plot_as_png(plot, f"figures/ellipses/circle/{title}.png")
+            save_plot_as_png(plot, f"figures/circle/{title}.png")
 
     # ----------------------------------------------------------------------
     # End
