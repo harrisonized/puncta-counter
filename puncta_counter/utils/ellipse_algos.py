@@ -32,8 +32,11 @@ def confidence_ellipse(P, aweights=None, n_std=2.5, **kwargs):
     center_x = sum(x*aweights)/sum(aweights) if aweights else np.mean(x)
     center_y = sum(y*aweights)/sum(aweights) if aweights else np.mean(y)
     
-    # PCA
-    # Note that this is NOT the equivalent of SVD, even in 2D!
+    # 2D PCA Only
+    # Note from Harrison: I spent a lot of time verifying that the signs and angles here are correct.
+    # Note that this is NOT the equivalent of SVD,
+    # because the sign and order of the eigenvectors and eigenvalues can change!
+    # See: https://stats.stackexchange.com/questions/197034/different-order-and-signs-of-eigenvectors-when-doing-pca-via-eig-or-svd-func
     eig_vals, eig_vecs = np.linalg.eig(cov)
     if eig_vals[0] >= eig_vals[1]:
         major_axis_length = (2 * major_radius) * np.sqrt(cov[0, 0]) * n_std

@@ -20,7 +20,7 @@ from puncta_counter.src.summarize import (generate_circle, generate_ellipse,
 from puncta_counter.utils.common import dirname_n_times
 from puncta_counter.utils.plotting import save_plot_as_png
 from puncta_counter.utils.logger import configure_logger
-from puncta_counter.etc.columns import nuclei_cols, puncta_cols
+from puncta_counter.etc.columns import ellipse_cols, nuclei_cols, puncta_cols
 
 script_name = 'run_puncta_counter'
 this_dir = os.path.realpath(ospj(os.getcwd(), os.path.dirname(__file__)))
@@ -86,8 +86,7 @@ def main(args=None):
     nuclei = pd.read_csv("data/nuclei.csv")
     nuclei = preprocess_df(nuclei, nuclei_cols)
     nuclei['effective_radius_nuclei'] = nuclei['area'].apply(lambda x: np.sqrt(x/np.pi))
-    nuclei['angle'] = nuclei['orientation'].apply(lambda x: x/180*np.pi)
-    
+
     nuclei_subset = nuclei[
         (nuclei['eccentricity'] < 0.69)
         & (nuclei['major_axis_length'] < 128)
@@ -99,7 +98,6 @@ def main(args=None):
     puncta = pd.read_csv("data/puncta.csv")
     puncta = preprocess_df(puncta, puncta_cols)
     puncta = reassign_puncta_to_nuclei(puncta, nuclei)
-    puncta['angle'] = puncta['orientation'].apply(lambda x: x/180*np.pi)
 
     min_scale = 0.7  # rescale to half the intensity ~1/np.sqrt(2) at the lowest brightness
     intensity_col = 'mean_intensity'
@@ -127,7 +125,7 @@ def main(args=None):
 
         logger.info(f"Generating confidence ellipse...")
         ellipses = generate_ellipse(puncta_subset, algo='confidence_ellipse')
-        ellipses['angle'] = ellipses['orientation'].apply(lambda x: x/180*np.pi)
+        ellipses[['image_number', 'object_number'] + ellipse_cols].to_csv('data/confidence_ellipse.csv', index=None)
 
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
             title = filename_for_image_number[image_number].split('.')[0]
@@ -138,7 +136,7 @@ def main(args=None):
                 puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
             )
 
-            save_plot_as_png(plot, f"figures/confidence_ellipse/{title}.png")
+            save_plot_as_png(plot, f"figures/ellipses/confidence_ellipse/{title}.png")
 
     # ----------------------------------------------------------------------
     # Mimimum Bounding Ellipse
@@ -147,9 +145,8 @@ def main(args=None):
     if 'min_vol_ellipse' in args.algos:
 
         logger.info(f"Generating minimum bounding ellipse...")
-
         ellipses = generate_ellipse(puncta_subset, algo='min_vol_ellipse')  # this has a bug
-        ellipses['angle'] = ellipses['orientation'].apply(lambda x: x/180*np.pi)
+        ellipses[['image_number', 'object_number'] + ellipse_cols].to_csv('data/min_vol_ellipse.csv', index=None)
 
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
             title = filename_for_image_number[image_number].split('.')[0]
@@ -160,7 +157,7 @@ def main(args=None):
                 puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
             )
 
-            save_plot_as_png(plot, f"figures/min_vol_ellipse/{title}.png")
+            save_plot_as_png(plot, f"figures/ellipses/min_vol_ellipse/{title}.png")
 
     # ----------------------------------------------------------------------
     # Circles
@@ -170,6 +167,10 @@ def main(args=None):
 
         logger.info(f"Generating gaussian circles...")
         circles = generate_circle(puncta_subset)
+        circles[['image_number', "nuclei_object_number",
+                 "center_x_mean", "center_y_mean",
+                 "effective_radius_puncta"]].to_csv('data/circles.csv', index=None)
+
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
             title = filename_for_image_number[image_number].split('.')[0]
 
@@ -179,7 +180,7 @@ def main(args=None):
                 puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
             )
 
-            save_plot_as_png(plot, f"figures/circle/{title}.png")
+            save_plot_as_png(plot, f"figures/ellipses/circle/{title}.png")
 
     # ----------------------------------------------------------------------
     # End

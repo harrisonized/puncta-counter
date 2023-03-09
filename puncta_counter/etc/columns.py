@@ -1,7 +1,10 @@
 # Objects
-# nuclei_cols
-# puncta_cols
+# # ellipse_cols
+# # nuclei_cols
+# # puncta_cols
 
+
+ellipse_cols = ["center_x", "center_y", "major_axis_length", "minor_axis_length", "orientation"]
 
 nuclei_cols = [
     # index cols

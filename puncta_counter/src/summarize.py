@@ -6,6 +6,7 @@ from puncta_counter.utils.common import flatten_columns
 from puncta_counter.utils.ellipse_algos import confidence_ellipse, min_vol_ellipse
 from puncta_counter.utils.plotting import (plot_circle_using_bokeh,
                                            plot_ellipse_using_bokeh)
+from puncta_counter.etc.columns import ellipse_cols
 
 
 # Functions
@@ -14,6 +15,8 @@ from puncta_counter.utils.plotting import (plot_circle_using_bokeh,
 # # plot_nuclei_ellipses_puncta
 # # plot_nuclei_circles_puncta
 
+# Note
+# # ellipse_cols = ["center_x", "center_y", "major_axis_length", "minor_axis_length", "orientation"] 
 
 def generate_ellipse(
         puncta,
@@ -22,13 +25,11 @@ def generate_ellipse(
         tolerance=0.05  # algo='min_vol_ellipse'
     ):
     """Generates an ellipse, which comes with the following dimensions:
-
     ["center_x",
      "center_y",
      "minor_axis_length",
      "major_axis_length",
      "orientation"]
-
     """
 
     puncta['center'] = puncta[['center_x', 'center_y']].apply(list, axis=1)
@@ -42,9 +43,7 @@ def generate_ellipse(
 
 
     if algo == 'confidence_ellipse':
-        puncta_summary[
-            ["center_x", "center_y", "major_axis_length", "minor_axis_length", "orientation"]
-        ] = pd.DataFrame(
+        puncta_summary[ellipse_cols] = pd.DataFrame(
             puncta_summary[["center", 'integrated_intensity']]
             .apply(lambda x: confidence_ellipse(
                 np.transpose(np.array(x['center'])),
@@ -54,9 +53,7 @@ def generate_ellipse(
         )
 
     elif algo == 'min_vol_ellipse':
-        puncta_summary[
-            ["center_x", "center_y", "major_axis_length", "minor_axis_length", "orientation"]
-        ] = pd.DataFrame(
+        puncta_summary[ellipse_cols] = pd.DataFrame(
             puncta_summary["center"]
             .apply(lambda x: np.transpose(np.array(x)))
             .apply(lambda x: min_vol_ellipse(x, tolerance=tolerance))
@@ -103,11 +100,11 @@ def generate_circle(puncta):
 
 
 def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
-    """Build plot
+    """Construct a resemblance of the original image from the extracted features
     """
 
     # nuclei
-    nuclei_data = nuclei[["object_number", "center_x", "center_y", "major_axis_length", "minor_axis_length", "angle"]]
+    nuclei_data = nuclei[["object_number"]+ellipse_cols]
     plot = plot_ellipse_using_bokeh(
         nuclei_data,
         nuclei_data,
@@ -115,14 +112,15 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
         y='center_y',
         height="major_axis_length",
         width="minor_axis_length",
-        angle='angle',
+        angle="orientation",
+        angle_units='deg',
         text="object_number",
         title=title,
         fill_color='#000fff',  # blue
     )
 
     # confidence_ellipse
-    ellipses_data = ellipses[["object_number", "center_x", "center_y", "major_axis_length", "minor_axis_length", "angle"]]
+    ellipses_data = ellipses[["object_number"]+ellipse_cols]
     plot = plot_ellipse_using_bokeh(
         ellipses_data,
         ellipses_data,
@@ -130,7 +128,8 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
         y='center_y',
         height="major_axis_length",
         width="minor_axis_length",
-        angle='angle',
+        angle="orientation",
+        angle_units='deg',
         text="object_number",
         text_color='orange',
         fill_color='#097969',  # green
@@ -140,14 +139,15 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
     )
 
     # puncta
-    puncta_data = puncta[["object_number", "center_x", "center_y", "major_axis_length", "minor_axis_length", "angle", "fill_alpha"]]
+    puncta_data = puncta[["object_number"] + ellipse_cols + ["fill_alpha"]]
     plot = plot_ellipse_using_bokeh(
         puncta_data,
         x='center_x',
         y='center_y',
         height="major_axis_length",
         width="minor_axis_length",
-        angle='angle',
+        angle="orientation",
+        angle_units='deg',
         fill_color='#ff2b00',  # red
         fill_alpha='fill_alpha',
         line_alpha=0,
@@ -158,11 +158,11 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
 
 
 def plot_nuclei_circles_puncta(nuclei, circles, puncta, title=None):
-    """Build plot
+    """Construct a resemblance of the original image from the extracted features
     """
 
     # nuclei
-    nuclei_data = nuclei[["object_number", "center_x", "center_y", "major_axis_length", "minor_axis_length", "angle"]]
+    nuclei_data = nuclei[["object_number"] + ellipse_cols]
     plot = plot_ellipse_using_bokeh(
         nuclei_data,
         nuclei_data,
@@ -170,7 +170,8 @@ def plot_nuclei_circles_puncta(nuclei, circles, puncta, title=None):
         y='center_y',
         height="major_axis_length",
         width="minor_axis_length",
-        angle='angle',
+        angle="orientation",
+        angle_units='deg',
         text="object_number",
         title=title,
         fill_color='#000fff',  # blue
@@ -192,15 +193,17 @@ def plot_nuclei_circles_puncta(nuclei, circles, puncta, title=None):
     )
 
     # puncta
-    puncta_data = puncta[["object_number", "center_x", "center_y", "major_axis_length", "minor_axis_length", "angle"]]
+    puncta_data = puncta[["object_number"] + ellipse_cols + ["fill_alpha"]]
     plot = plot_ellipse_using_bokeh(
         puncta_data,
         x='center_x',
         y='center_y',
         height="major_axis_length",
         width="minor_axis_length",
-        angle='angle',
+        angle="orientation",
+        angle_units='deg',
         fill_color='#ff2b00',  # red
+        fill_alpha='fill_alpha',
         line_alpha=0,
         plot=plot
     )

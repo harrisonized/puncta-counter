@@ -68,6 +68,7 @@ def plot_ellipse_using_bokeh(
         height="height",
         width="width",
         angle='angle',
+        angle_units='deg',
         text=None,
         title=None,
         fill_color='#000fff',  # blue
@@ -91,7 +92,9 @@ def plot_ellipse_using_bokeh(
         
     ellipse_glyph = Ellipse(
         x=x, y=y, width=width,
-        height=height, angle=angle,
+        height=height,
+        angle=angle,
+        angle_units=angle_units,
         line_color='#FFFFFF',
         fill_color=fill_color,
         fill_alpha=fill_alpha,
