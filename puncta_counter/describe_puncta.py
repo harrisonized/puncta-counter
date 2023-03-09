@@ -45,7 +45,7 @@ def parse_args(args=None):
     parser.add_argument("-a", "--algos", dest="algos", nargs='+',
     	                default=['confidence_ellipse',
     	                		 'min_vol_ellipse',
-    	                		 # 'circle',  # deprecated
+    	                		 'circle',  # deprecated
     	                		 ],
                         action="store", required=False, help="limit scope for testing")
 
@@ -134,6 +134,7 @@ def main(args=None):
                 nuclei=nuclei_subset.loc[(nuclei_subset['image_number']==image_number)],
                 ellipses=ellipses.loc[(ellipses['image_number']==image_number)],
                 puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
+                title=title
             )
 
             save_plot_as_png(plot, f"figures/confidence_ellipse/{title}.png")
@@ -154,6 +155,7 @@ def main(args=None):
                 nuclei=nuclei_subset.loc[(nuclei_subset['image_number']==image_number)],
                 ellipses=ellipses.loc[(ellipses['image_number']==image_number)],
                 puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
+                title=title
             )
 
             save_plot_as_png(plot, f"figures/min_vol_ellipse/{title}.png")
@@ -177,6 +179,7 @@ def main(args=None):
                 nuclei=nuclei_subset.loc[(nuclei_subset['image_number']==image_number)],
                 circles=circles.loc[(circles['image_number']==image_number)],
                 puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
+                title=title
             )
 
             save_plot_as_png(plot, f"figures/circle/{title}.png")
