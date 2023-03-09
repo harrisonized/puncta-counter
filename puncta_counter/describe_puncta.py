@@ -44,8 +44,8 @@ def parse_args(args=None):
 
     parser.add_argument("-a", "--algos", dest="algos", nargs='+',
     	                default=['confidence_ellipse',
-    	                		 # 'min_vol_ellipse',  # bugs
-    	                		 # 'circle',  # deprecate
+    	                		 'min_vol_ellipse',
+    	                		 # 'circle',  # deprecated
     	                		 ],
                         action="store", required=False, help="limit scope for testing")
 
@@ -140,12 +140,11 @@ def main(args=None):
 
     # ----------------------------------------------------------------------
     # Mimimum Bounding Ellipse
-    # There's a bug in the current implementation
 
     if 'min_vol_ellipse' in args.algos:
 
         logger.info(f"Generating minimum bounding ellipse...")
-        ellipses = generate_ellipse(puncta_subset, algo='min_vol_ellipse')  # this has a bug
+        ellipses = generate_ellipse(puncta_subset, algo='min_vol_ellipse')
         ellipses[['image_number', 'object_number'] + ellipse_cols].to_csv('data/ellipses/min_vol_ellipse.csv', index=None)
 
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
@@ -161,7 +160,7 @@ def main(args=None):
 
     # ----------------------------------------------------------------------
     # Circles
-    # This should be deprecated. I'm making it available for now just for comparison
+    # This should be deprecated. I'm making it available for now just for comparison.
 
     if 'circle' in args.algos:
 
