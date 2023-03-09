@@ -1,40 +1,39 @@
 ## Introduction
 
-The image and data files were provided to me by Sarah Pyfrom. Data was generated using CellProfiler and will be documented on a future date. The purpose of this repo is to take tiff images and convert them into quantified data that enable us to characterize cells with xist clouds.
+I wrote this library to extract features from the output of CellProfiler, which allows the Anguera lab to quantify Xist localization from images of RNA FISH. The image and data files were provided to me by **Sarah Pyfrom**. The algorithms were tested on noisy data (to ensure robustness), which will be added to some pytests later. Currently, the main script is `describe_puncta.py`, which expects the `nuclei.csv` and `puncta.csv` files. It then uses the `confidence_ellipse` and `min_vol_ellipse` algorithms to draw boundaries around puncta. These algorithms return the following parameters per puncta: `center_x`, `center_y`, `major_axis_length`, `minor_axis_length`, `orientation`. Since the goal is to export ellipse parameters rather than exact boundaries, it is lightweight and runs very quickly. Most of the runtime is spent on file IO while saving plots.
 
 
 
-## Goals
+## Getting Started
 
-I envision that this repo will have three modules.
+Install the relevant libraries in your conda environment. A requirements file is coming, but for now, just bear with me.
 
-1. Feature extraction. For now, this will be handled by the CellProfiler gui for now. It is a stretch goal for my lab rotation to automate this step so that we have more control over noise filtering and anomaly exclusion.
+In your command line, run:
 
-2. Image classification. I have various ideas how this would work. If there is clear clustering of features for classifying an xist cloud as being localized, dispersed, or diffused, we can set some hard cutoffs. Otherwise, we could try a multiclass classifier, such as logistic regression or SVM. If the features are less clustered and more continuous, we could instead plot on a histogram or violin plots.
-
-3. Troubleshooting. This will be important in evaluating the accuracy of the classification. For this, I envision that for each microscope field, we would output one image per cell labeled by cell_number in labeled directories indicating how that cell was classified. For example, if we had four cells classified into three groups, this will be the output.
-
-   ```
-   images
-   └── output
-       ├── type_1
-       │   ├── sSP67_18_B6_CRE_003-cell_1.png
-    	│   └── sSP67_18_B6_CRE_003-cell_3.png
-       ├── type_2
-       │   └── sSP67_18_B6_CRE_003-cell_4.png
-       └── type_4
-    	    └── sSP67_18_B6_CRE_003-cell_2.png
-   ```
-
-   In this way, it makes it easy for a user to scroll through a repository and identify if a cell was misclassified.
-
-
-
-## Miscellaneous Notes
-
-To save Bokeh figures, you must install geckodriver:
-
-```
-sudo apt-get install firefox-geckodriver
+```bash
+conda activate <your_env>
+cd puncta_counter
+python describe_puncta.py -a 'confidence_ellipse' 'min_vol_ellipse'
 ```
 
+Note that to save Bokeh figures, you must install geckodriver, and this is separate from your conda environment:  `sudo apt-get install firefox-geckodriver`. Depending on how difficult it is for people to use Bokeh, I might switch to matplotlib, but this is not currently a priority.
+
+
+
+## To Do
+
+1. Outlier detection
+2. Doublet detection and filtering
+3. Actual image quantification
+
+
+
+## License
+
+This project is licensed under the terms of the [MIT license](https://github.com/harrisonized/puncta-counter/blob/master/LICENSE). If you choose to use this as a building block for your own project, please fork this repository, clone from your own fork, and give me due credit in a CREDITS.md file ([example from my blog](https://github.com/harrisonized/harrisonized.github.io/blob/master/CREDITS.md)).
+
+
+
+## Getting Help
+
+Always feel free to email me at [harrison.c.wang@gmail.com](mailto: harrison.c.wang@gmail.com).
