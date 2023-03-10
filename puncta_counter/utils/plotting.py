@@ -19,12 +19,17 @@ from bokeh.io import export_png
 # # plot_scatter_using_bokeh
 
 
-def save_plot_as_png(plot, filepath):
+def save_plot_as_png(
+		plot,
+		filepath,
+		width=None,  # doesn't work for some reason
+		height=None,  # doesn't work for some reason
+	):
     """For Bokeh
     """
     if os.path.sep in filepath:
         os.makedirs(os.path.sep.join(str(filepath).split(os.path.sep )[:-1]), exist_ok=True)
-    export_png(plot, filename=filepath)
+    export_png(plot, filename=filepath, width=width, height=height)
 
 
 def instantiate_plot_bokeh(
