@@ -4,6 +4,7 @@ import re
 
 # Functions
 # # dirname_n_times
+# # title_to-snake_case
 # # camel_to_snake_case
 # # flatten_columns
 
@@ -13,6 +14,12 @@ def dirname_n_times(path, n=1):
     for i in range(n):
         path = dirname(path)
     return path
+
+
+def title_to_snake_case(text):
+    """Converts "Column Title" to column_title
+    """
+    return text.lower().replace(' ', '_').replace('-', '_')
 
 
 def camel_to_snake_case(text):

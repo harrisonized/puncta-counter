@@ -29,8 +29,8 @@ def confidence_ellipse(P, aweights=None, n_std=2.5, **kwargs):
     )
     
     # calculate weighted center
-    center_x = sum(x*aweights)/sum(aweights) if aweights else np.mean(x)
-    center_y = sum(y*aweights)/sum(aweights) if aweights else np.mean(y)
+    center_x = sum(x*aweights)/sum(aweights) if aweights is not None else np.mean(x)
+    center_y = sum(y*aweights)/sum(aweights) if aweights is not None else np.mean(y)
     
     # 2D PCA Only
     # Note from Harrison: I spent a lot of time verifying that the signs and angles here are correct.
