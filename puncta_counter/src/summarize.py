@@ -104,14 +104,15 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
     """
 
     # nuclei
-    nuclei_data = nuclei[["object_number"]+ellipse_cols]
+    nuclei_data = nuclei[["object_number"]+ellipse_cols].copy()
+    nuclei_data['orientation'] = -nuclei_data['orientation']
     plot = plot_ellipse_using_bokeh(
         nuclei_data,
         nuclei_data,
         x='center_x',
         y='center_y',
-        height="major_axis_length",
-        width="minor_axis_length",
+        height="minor_axis_length",
+        width="major_axis_length",
         angle="orientation",
         angle_units='deg',
         text="object_number",
@@ -120,14 +121,15 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
     )
 
     # confidence_ellipse
-    ellipses_data = ellipses[["object_number"]+ellipse_cols]
+    ellipses_data = ellipses[["object_number"]+ellipse_cols].copy()
+    ellipses_data['orientation'] = -ellipses_data['orientation']
     plot = plot_ellipse_using_bokeh(
         ellipses_data,
         ellipses_data,
         x='center_x',
         y='center_y',
-        height="major_axis_length",
-        width="minor_axis_length",
+        height="minor_axis_length",
+        width="major_axis_length",
         angle="orientation",
         angle_units='deg',
         text="object_number",
@@ -139,13 +141,14 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
     )
 
     # puncta
-    puncta_data = puncta[["object_number"] + ellipse_cols + ["fill_alpha"]]
+    puncta_data = puncta[["object_number"] + ellipse_cols + ["fill_alpha"]].copy()
+    puncta_data['orientation'] = -puncta_data['orientation']
     plot = plot_ellipse_using_bokeh(
         puncta_data,
         x='center_x',
         y='center_y',
-        height="major_axis_length",
-        width="minor_axis_length",
+        height="minor_axis_length",
+        width="major_axis_length",
         angle="orientation",
         angle_units='deg',
         fill_color='#ff2b00',  # red
@@ -162,14 +165,15 @@ def plot_nuclei_circles_puncta(nuclei, circles, puncta, title=None):
     """
 
     # nuclei
-    nuclei_data = nuclei[["object_number"] + ellipse_cols]
+    nuclei_data = nuclei[["object_number"] + ellipse_cols].copy()
+    nuclei_data['orientation'] = -nuclei_data['orientation']
     plot = plot_ellipse_using_bokeh(
         nuclei_data,
         nuclei_data,
         x='center_x',
         y='center_y',
-        height="major_axis_length",
-        width="minor_axis_length",
+        height="minor_axis_length",
+        width="major_axis_length",
         angle="orientation",
         angle_units='deg',
         text="object_number",
@@ -178,7 +182,9 @@ def plot_nuclei_circles_puncta(nuclei, circles, puncta, title=None):
     )
 
     # circle
-    circles_data = circles[["nuclei_object_number", "center_x_mean", "center_y_mean", "effective_radius_puncta"]]
+    circles_data = circles[
+        ["nuclei_object_number", "center_x_mean", "center_y_mean", "effective_radius_puncta"]
+    ].copy()
     plot = plot_circle_using_bokeh(
         circles_data,
         circles_data,
@@ -193,13 +199,14 @@ def plot_nuclei_circles_puncta(nuclei, circles, puncta, title=None):
     )
 
     # puncta
-    puncta_data = puncta[["object_number"] + ellipse_cols + ["fill_alpha"]]
+    puncta_data = puncta[["object_number"] + ellipse_cols + ["fill_alpha"]].copy()
+    puncta_data['orientation'] = -puncta_data['orientation']
     plot = plot_ellipse_using_bokeh(
         puncta_data,
         x='center_x',
         y='center_y',
-        height="major_axis_length",
-        width="minor_axis_length",
+        height="minor_axis_length",
+        width="major_axis_length",
         angle="orientation",
         angle_units='deg',
         fill_color='#ff2b00',  # red
