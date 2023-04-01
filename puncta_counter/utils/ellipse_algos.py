@@ -5,6 +5,9 @@ import numpy as np
 # # confidence_ellipse
 # # min_vol_ellipse
 # # scale_invariant_ellipse_transform
+# # center_points
+# # rotate_points
+# # rescale_xy
 
 
 def confidence_ellipse(P, aweights=None, n_std=1, **kwargs):
@@ -184,3 +187,28 @@ def scale_invariant_ellipse_transform(major_axis_length, minor_axis_length, angl
     new_minor_axis_length = minor_axis_length * np.sqrt(2) / np.sqrt((height_to_width_ratio)**2 + 1) 
     
     return new_major_axis_length, new_minor_axis_length, new_angle
+
+
+def center_points(A):
+    return np.array((A[0]-A[0].mean(), A[1]-A[1].mean()))
+
+
+def rotate_points(A, orientation):
+    """A is a list of points
+    Provide the orientation in degrees
+    To unrotate points, rotate by negative orientation
+    Make sure points are centered before using this
+    """
+    # Rotation matrix
+    R = np.array(
+        [[np.cos(orientation/180*np.pi), -np.sin(orientation/180*np.pi)],
+         [np.sin(orientation/180*np.pi), np.cos(orientation/180*np.pi)]]
+    )
+    
+    return np.dot(R, A)
+
+
+def rescale_xy(A, scale_x=1, scale_y=1):
+    """Make sure points have been unrotated before using this
+    """
+    return np.array((A[0]/scale_x, A[1]/scale_y))
