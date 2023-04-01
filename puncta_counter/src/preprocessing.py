@@ -60,7 +60,7 @@ def find_nearest_point(point, points:list):
 
 def reassign_puncta_to_nuclei(puncta, nuclei):
     """If the nuclei and puncta were generated at different times, they could be numbered differently
-    This reassigns the nuclei_id so that the indexes line up
+    This reassigns the parent_manual_nuclei so that it lines up with nuclei_object_number
     """
 
     puncta_centers = (
@@ -89,12 +89,12 @@ def reassign_puncta_to_nuclei(puncta, nuclei):
     puncta_centers["nuclei_object_number"] = pd.merge(
         left=puncta_centers[["closest_nuclei_x", "closest_nuclei_y",
                              "image_number", "parent_manual_nuclei"]],
-        right=nuclei[["center_x", "center_y", "image_number", "object_number"]],
+        right=nuclei[["center_x", "center_y", "image_number", "nuclei_object_number"]],
         left_on=["closest_nuclei_x", "closest_nuclei_y", "image_number",],
         right_on=["center_x", "center_y", "image_number",],
         how="left",
         suffixes=("", "_nuclei")
-    )["object_number"]
+    )["nuclei_object_number"]
 
 
     # add back to puncta
@@ -111,11 +111,11 @@ def reassign_puncta_to_nuclei(puncta, nuclei):
     # filter puncta that are too far away from the nuclei
     puncta = pd.merge(
         left=puncta[list(puncta_cols)+["nuclei_object_number"]],
-        right=nuclei[["image_number", "object_number",
+        right=nuclei[["image_number", "nuclei_object_number",
                       "bounding_box_min_x", "bounding_box_max_x",
                       "bounding_box_min_y", "bounding_box_max_y"]],
         left_on=["image_number", "nuclei_object_number"],
-        right_on=["image_number", "object_number"],
+        right_on=["image_number", "nuclei_object_number"],
         how="left",
         suffixes=("", "_nuclei")
     )  # left join nuclei data

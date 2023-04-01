@@ -84,6 +84,7 @@ def main(args=None):
 
     # Nuclei
     nuclei = pd.read_csv("data/nuclei.csv")
+    nuclei.rename(columns={'ObjectNumber': 'NucleiObjectNumber'}, inplace=True)
     nuclei = preprocess_df(nuclei, nuclei_cols)
     nuclei['effective_radius_nuclei'] = nuclei['area'].apply(lambda x: np.sqrt(x/np.pi))
 
@@ -96,6 +97,7 @@ def main(args=None):
 
     # Puncta
     puncta = pd.read_csv("data/puncta.csv")
+    puncta = puncta.rename(columns={'ObjectNumber': 'PunctaObjectNumber'})
     puncta = preprocess_df(puncta, puncta_cols)
     puncta = reassign_puncta_to_nuclei(puncta, nuclei)
 
@@ -106,14 +108,13 @@ def main(args=None):
     )*(1-min_scale)+(min_scale)
 
     puncta_subset = pd.merge(
-        left=nuclei_subset[["image_number", 'object_number']],
-        right=puncta.loc[:, puncta.columns != 'object_number'],
-        left_on=["image_number", 'object_number'],
+        left=nuclei_subset[["image_number", 'nuclei_object_number']],
+        right=puncta.loc[:, puncta.columns != 'puncta_object_number'],
+        left_on=["image_number", 'nuclei_object_number'],
         right_on=['image_number', 'nuclei_object_number'],
         how="left",
-    ).dropna(subset=['nuclei_object_number'])  # use nuclei_subset to filter puncta
+    ).dropna(subset=['parent_manual_nuclei'])  # use nuclei_subset to filter puncta
     puncta_subset.to_csv('data/puncta_subset.csv', index=None)
-
 
     filename_for_image_number = dict(zip(nuclei_subset['image_number'], nuclei_subset['file_name_tif']))
 
@@ -125,7 +126,7 @@ def main(args=None):
 
         logger.info(f"Generating confidence ellipse...")
         ellipses = generate_ellipse(puncta_subset, algo='confidence_ellipse')
-        ellipses[['image_number', 'object_number'] + ellipse_cols].to_csv('data/ellipses/confidence_ellipse.csv', index=None)
+        ellipses[['image_number', 'nuclei_object_number'] + ellipse_cols].to_csv('data/ellipses/confidence_ellipse.csv', index=None)
 
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
             title = filename_for_image_number[image_number].split('.')[0]
@@ -146,7 +147,7 @@ def main(args=None):
 
         logger.info(f"Generating minimum bounding ellipse...")
         ellipses = generate_ellipse(puncta_subset, algo='min_vol_ellipse')
-        ellipses[['image_number', 'object_number'] + ellipse_cols].to_csv('data/ellipses/min_vol_ellipse.csv', index=None)
+        ellipses[['image_number', 'nuclei_object_number'] + ellipse_cols].to_csv('data/ellipses/min_vol_ellipse.csv', index=None)
 
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
             title = filename_for_image_number[image_number].split('.')[0]

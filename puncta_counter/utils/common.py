@@ -36,3 +36,14 @@ def flatten_columns(multicols):
     """Flattens a 2 level multi-index
     """
     return [f'{cols[0].lower()}_{cols[1]}'.strip('_') for cols in multicols]
+
+
+def multicol_explode(df, cols):
+    """Use this to explode multiple columns if pandas version < 1.3.0:
+    """
+    df['tmp'] = df[cols].apply(lambda x: list(zip(*x)), axis=1)
+    df = df.explode('tmp')
+    for idx, col in enumerate(cols):
+        df[col] = df['tmp'].apply(lambda x: x[idx])
+    
+    return df.drop(columns=['tmp']).reset_index(drop=True)

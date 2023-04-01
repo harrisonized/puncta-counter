@@ -9,7 +9,7 @@ ellipse_cols = ["center_x", "center_y", "major_axis_length", "minor_axis_length"
 nuclei_cols = [
     # index cols
     'image_number',
-    'object_number',
+    'nuclei_object_number',
     'path_name_tif',
     'file_name_tif',
     
@@ -63,7 +63,7 @@ nuclei_cols = [
 
 
 puncta_cols = [
-    "image_number", "object_number", "parent_manual_nuclei",  # index_cols
+    "image_number", "puncta_object_number", "parent_manual_nuclei",  # index_cols
     
     # square areas
     "center_x",
