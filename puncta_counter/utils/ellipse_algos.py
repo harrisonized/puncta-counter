@@ -8,6 +8,8 @@ import numpy as np
 # # center_points
 # # rotate_points
 # # rescale_xy
+# # mahalanobis_transform
+# # compute_euclidean_distance_from_origin
 
 
 def confidence_ellipse(P, aweights=None, n_std=1, **kwargs):
@@ -212,3 +214,20 @@ def rescale_xy(A, scale_x=1, scale_y=1):
     """Make sure points have been unrotated before using this
     """
     return np.array((A[0]/scale_x, A[1]/scale_y))
+
+
+def mahalanobis_transform(P, major_axis_length, minor_axis_length, orientation):
+    """Transform points such that they are centered about 0
+    and the distance from the origin is the Mahalanobis distance
+    """
+    centered = center_points(P)
+    rotated = rotate_points(centered, -orientation)
+    scaled = rescale_xy(rotated, major_axis_length, minor_axis_length)
+    
+    return scaled
+
+
+def compute_euclidean_distance_from_origin(P):
+    """Euclidean distances in Mahalanobis space is the number of standard deviations from the mean
+    """
+    return np.sqrt(P[0]**2+P[1]**2)
