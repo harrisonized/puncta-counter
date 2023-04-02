@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from puncta_counter.src.preprocessing import preprocess_df, reassign_puncta_to_nuclei
-from puncta_counter.src.summarize import (generate_circle, generate_ellipse,
+from puncta_counter.src.summarize import (generate_circle, generate_ellipse, compute_mahalanobis_distances,
                                           plot_nuclei_circles_puncta, plot_nuclei_ellipses_puncta)
 from puncta_counter.utils.common import dirname_n_times
 from puncta_counter.utils.plotting import save_plot_as_png
@@ -41,12 +41,14 @@ def parse_args(args=None):
                         required=False, help="input directory")
     parser.add_argument("-o", "--output", dest="output_dir", default='data', action="store",
                         required=False, help="output directory")
+    parser.add_argument("-s", "--save", dest="save", default=False, action="store_true",
+                        required=False, help="turn this on to output the intermediate csv files")
 
     parser.add_argument("-a", "--algos", dest="algos", nargs='+',
-    	                default=['confidence_ellipse',
-    	                		 'min_vol_ellipse',
-    	                		 'circle',  # deprecated
-    	                		 ],
+                        default=['confidence_ellipse',
+                                 # 'min_vol_ellipse',
+                                 # 'circle',  # deprecated
+                                ],
                         action="store", required=False, help="limit scope for testing")
 
     # other
@@ -92,7 +94,9 @@ def main(args=None):
         (nuclei['eccentricity'] < 0.69)
         & (nuclei['major_axis_length'] < 128)
     ].copy()
-    nuclei_subset.to_csv('data/nuclei_subset.csv', index=None)
+
+    if args.save:
+        nuclei_subset.to_csv('data/nuclei_subset.csv', index=None)
 
 
     # Puncta
@@ -114,7 +118,9 @@ def main(args=None):
         right_on=['image_number', 'nuclei_object_number'],
         how="left",
     ).dropna(subset=['parent_manual_nuclei'])  # use nuclei_subset to filter puncta
-    puncta_subset.to_csv('data/puncta_subset.csv', index=None)
+
+    if args.save:
+        puncta_subset.to_csv('data/puncta_subset.csv', index=None)
 
     filename_for_image_number = dict(zip(nuclei_subset['image_number'], nuclei_subset['file_name_tif']))
 
@@ -125,8 +131,34 @@ def main(args=None):
     if 'confidence_ellipse' in args.algos:
 
         logger.info(f"Generating confidence ellipse...")
-        ellipses = generate_ellipse(puncta_subset, algo='confidence_ellipse')
-        ellipses[['image_number', 'nuclei_object_number'] + ellipse_cols].to_csv('data/ellipses/confidence_ellipse.csv', index=None)
+
+        # used to filter outliers
+        unweighted_ellipses = generate_ellipse(
+            puncta_subset,
+            algo='confidence_ellipse',
+            aweights=None,
+            n_std=1
+        )
+
+        # filter outliers mahalanobis_distances >= 1.5
+        unweighted_ellipses = compute_mahalanobis_distances(unweighted_ellipses)
+        unweighted_ellipses['center_x'] = unweighted_ellipses['centers'].apply(lambda x: x[0])
+        unweighted_ellipses['center_y'] = unweighted_ellipses['centers'].apply(lambda x: x[1])
+        unweighted_ellipses.drop(columns=['centers'], inplace=True)
+        unweighted_ellipses = unweighted_ellipses[(unweighted_ellipses['mahalanobis_distances'] < 1.5)]  # filter
+
+        # compute final boundaries
+        ellipses = generate_ellipse(
+            unweighted_ellipses,
+            algo='confidence_ellipse',
+            aweights='integrated_intensity',
+            n_std=2
+        )
+
+        if args.save:
+            ellipses[['image_number', 'nuclei_object_number'] + ellipse_cols].to_csv(
+                'data/ellipses/confidence_ellipse.csv', index=None
+            )
 
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
             title = filename_for_image_number[image_number].split('.')[0]
@@ -147,7 +179,10 @@ def main(args=None):
 
         logger.info(f"Generating minimum bounding ellipse...")
         ellipses = generate_ellipse(puncta_subset, algo='min_vol_ellipse')
-        ellipses[['image_number', 'nuclei_object_number'] + ellipse_cols].to_csv('data/ellipses/min_vol_ellipse.csv', index=None)
+        if args.save:
+            ellipses[['image_number', 'nuclei_object_number'] + ellipse_cols].to_csv(
+                'data/ellipses/min_vol_ellipse.csv', index=None
+            )
 
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
             title = filename_for_image_number[image_number].split('.')[0]
@@ -169,9 +204,10 @@ def main(args=None):
 
         logger.info(f"Generating gaussian circles...")
         circles = generate_circle(puncta_subset)
-        circles[['image_number', "nuclei_object_number",
-                 "center_x_mean", "center_y_mean",
-                 "effective_radius_puncta"]].to_csv('data/ellipses/circles.csv', index=None)
+        if args.save:
+            circles[['image_number', "nuclei_object_number",
+                     "center_x_mean", "center_y_mean",
+                     "effective_radius_puncta"]].to_csv('data/ellipses/circles.csv', index=None)
 
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
             title = filename_for_image_number[image_number].split('.')[0]

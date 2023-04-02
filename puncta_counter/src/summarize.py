@@ -3,7 +3,8 @@ import pandas as pd
 from scipy.stats import t
 
 from puncta_counter.utils.common import flatten_columns, multicol_explode
-from puncta_counter.utils.ellipse_algos import confidence_ellipse, min_vol_ellipse, mahalanobis_transform
+from puncta_counter.utils.ellipse_algos import (confidence_ellipse, min_vol_ellipse,
+	                                            mahalanobis_transform, compute_euclidean_distance_from_origin)
 from puncta_counter.utils.plotting import (plot_circle_using_bokeh,
                                            plot_ellipse_using_bokeh)
 from puncta_counter.etc.columns import ellipse_cols
@@ -43,7 +44,6 @@ def generate_ellipse(
         .agg(list)
         .reset_index()
     ).copy()
-    ellipses = ellipses.rename(columns={"integrated_intensity": "integrated_intensities"})
     
     # convert this: [[330.3, 52.7], [329.6, 54.8], [333.9, 54.8, 54.9]]
     # to this: [[330.3, 329.6 , 333.9],
@@ -59,7 +59,7 @@ def generate_ellipse(
 
     elif algo == 'confidence_ellipse':        
         ellipses[ellipse_cols] = pd.DataFrame(
-            ellipses[["centers", 'integrated_intensities']]
+            ellipses[["centers", 'integrated_intensity']]
             .apply(lambda x: confidence_ellipse(
                 x['centers'],
                 aweights=aweights if aweights is None else x[aweights],
@@ -111,7 +111,7 @@ def generate_circle(puncta):
     return circles
 
 
-def compute_mahalanobis_distances(ellipses):
+def compute_mahalanobis_distances(ellipses, explode=True):
     
     # center, rotate, and rescale the coordinates of the puncta (centers)
     # such that the x-axis is major_axis and the y-axis is the minor_axis
@@ -123,21 +123,22 @@ def compute_mahalanobis_distances(ellipses):
     ellipses['mahalanobis_distances'] = ellipses['mahalanobis_coordinates'].apply(
         compute_euclidean_distance_from_origin
     )
-    
-    # For multicol_explode, need arrays to be in this format:
-    #     [[330.3, 52.7], [329.6, 54.8], [333.9, 54.8, 54.9]]
-    # Not this:
-    #     [[330.3, 329.6 , 333.9],
-    #      [52.7, 54.8, 54.9]]
-    for col in ['centers', 'mahalanobis_coordinates']:
-        ellipses[col] = ellipses[col].apply(lambda x: np.transpose(np.array(x)))
-    
-    # make it such that each row is a single entity
-    ellipses = multicol_explode(
-        ellipses,
-        ['centers', 'integrated_intensity', 'mahalanobis_coordinates', 'mahalanobis_distances']
-    )
-    
+
+    if explode:
+        # For multicol_explode, need arrays to be in this format:
+        #     [[330.3, 52.7], [329.6, 54.8], [333.9, 54.8, 54.9]]
+        # Not this:
+        #     [[330.3, 329.6 , 333.9],
+        #      [52.7, 54.8, 54.9]]
+        for col in ['centers', 'mahalanobis_coordinates']:
+            ellipses[col] = ellipses[col].apply(lambda x: np.transpose(np.array(x)))
+        
+        # make it such that each row is a single entity
+        ellipses = multicol_explode(
+            ellipses,
+            ['centers', 'integrated_intensity', 'mahalanobis_coordinates', 'mahalanobis_distances']
+        )
+        
     return ellipses
 
 
@@ -152,8 +153,8 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
         nuclei_data,
         x='center_x',
         y='center_y',
-        height="minor_axis_length",
-        width="major_axis_length",
+        height="major_axis_length",
+        width="minor_axis_length",
         angle="orientation",
         angle_units='deg',
         text="nuclei_object_number",
@@ -162,14 +163,15 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
     )
 
     # confidence_ellipse
+    # may need to redo this...
     ellipses_data = ellipses[["nuclei_object_number"]+ellipse_cols]
     plot = plot_ellipse_using_bokeh(
         ellipses_data,
         ellipses_data,
         x='center_x',
         y='center_y',
-        height="minor_axis_length",
-        width="major_axis_length",
+        height="minor_axis_length",  # this is the reverse of CellProfiler orientation
+        width="major_axis_length",  # this is the reverse of CellProfiler orientation
         angle="orientation",
         angle_units='deg',
         text="nuclei_object_number",
@@ -186,8 +188,8 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
         puncta_data,
         x='center_x',
         y='center_y',
-        height="minor_axis_length",
-        width="major_axis_length",
+        height="major_axis_length",
+        width="minor_axis_length",
         angle="orientation",
         angle_units='deg',
         fill_color='#ff2b00',  # red
@@ -210,8 +212,8 @@ def plot_nuclei_circles_puncta(nuclei, circles, puncta, title=None):
         nuclei_data,
         x='center_x',
         y='center_y',
-        height="minor_axis_length",
-        width="major_axis_length",
+        height="major_axis_length",
+        width="minor_axis_length",
         angle="orientation",
         angle_units='deg',
         text="nuclei_object_number",
@@ -221,8 +223,8 @@ def plot_nuclei_circles_puncta(nuclei, circles, puncta, title=None):
 
     # circle
     circles_data = circles[
-    	["nuclei_object_number", "center_x_mean", "center_y_mean", "effective_radius_puncta"]
-	]
+        ["nuclei_object_number", "center_x_mean", "center_y_mean", "effective_radius_puncta"]
+    ]
     plot = plot_circle_using_bokeh(
         circles_data,
         circles_data,
@@ -242,8 +244,8 @@ def plot_nuclei_circles_puncta(nuclei, circles, puncta, title=None):
         puncta_data,
         x='center_x',
         y='center_y',
-        height="minor_axis_length",
-        width="major_axis_length",
+        height="major_axis_length",
+        width="minor_axis_length",
         angle="orientation",
         angle_units='deg',
         fill_color='#ff2b00',  # red
