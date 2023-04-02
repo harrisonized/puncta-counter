@@ -2,7 +2,7 @@
 
 """Takes nuclei.csv and puncta.csv files, computes boundaries, then plots using Bokeh
 This script is still in development and not ready for use
-As of 03/08/2023, this script is almost ready to use, but has some bugs.
+As of 04/01/2023, this script has a basic level of outlier filtering prior to plotting
 """
 
 import os
@@ -46,8 +46,8 @@ def parse_args(args=None):
 
     parser.add_argument("-a", "--algos", dest="algos", nargs='+',
                         default=['confidence_ellipse',
-                                 # 'min_vol_ellipse',
-                                 # 'circle',  # deprecated
+                                 'min_vol_ellipse',
+                                 'circle',  # deprecated
                                 ],
                         action="store", required=False, help="limit scope for testing")
 
@@ -148,6 +148,9 @@ def main(args=None):
         unweighted_ellipses = unweighted_ellipses[(unweighted_ellipses['mahalanobis_distances'] < 1.5)]  # filter
 
         # compute final boundaries
+        # unweighted_ellipses['integrated_intensity_sq'] = unweighted_ellipses['integrated_intensity'].apply(
+        #     lambda x: np.array(x)**2
+        # )  # this didn't actually work well
         ellipses = generate_ellipse(
             unweighted_ellipses,
             algo='confidence_ellipse',

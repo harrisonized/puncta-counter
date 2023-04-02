@@ -37,10 +37,11 @@ def generate_ellipse(
     """
 
     puncta['centers'] = puncta[['center_x', 'center_y']].apply(list, axis=1)
+    cols = list(set(["centers", "integrated_intensity"]+([] if aweights is None else [aweights])))
     
     ellipses = (
         puncta
-        .groupby(['image_number', 'nuclei_object_number'])[['centers', "integrated_intensity"]]
+        .groupby(['image_number', 'nuclei_object_number'])[cols]
         .agg(list)
         .reset_index()
     ).copy()
@@ -57,9 +58,9 @@ def generate_ellipse(
             .to_list()
         )
 
-    elif algo == 'confidence_ellipse':        
+    elif algo == 'confidence_ellipse':
         ellipses[ellipse_cols] = pd.DataFrame(
-            ellipses[["centers", 'integrated_intensity']]
+            ellipses[cols]
             .apply(lambda x: confidence_ellipse(
                 x['centers'],
                 aweights=aweights if aweights is None else x[aweights],
