@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import t
 
-from puncta_counter.utils.common import flatten_columns, multicol_explode
+from puncta_counter.utils.common import flatten_columns, expand_dataframe
 from puncta_counter.utils.ellipse_algos import (confidence_ellipse, min_vol_ellipse,
 	                                            mahalanobis_transform, compute_euclidean_distance_from_origin)
 from puncta_counter.utils.plotting import (plot_circle_using_bokeh,
@@ -126,7 +126,7 @@ def compute_mahalanobis_distances(ellipses, explode=True):
     )
 
     if explode:
-        # For multicol_explode, need arrays to be in this format:
+        # For expand_dataframe, need arrays to be in this format:
         #     [[330.3, 52.7], [329.6, 54.8], [333.9, 54.8, 54.9]]
         # Not this:
         #     [[330.3, 329.6 , 333.9],
@@ -135,7 +135,7 @@ def compute_mahalanobis_distances(ellipses, explode=True):
             ellipses[col] = ellipses[col].apply(lambda x: np.transpose(np.array(x)))
         
         # make it such that each row is a single entity
-        ellipses = multicol_explode(
+        ellipses = expand_dataframe(
             ellipses,
             ['centers', 'integrated_intensity', 'mahalanobis_coordinates', 'mahalanobis_distances']
         )

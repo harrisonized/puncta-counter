@@ -17,7 +17,7 @@ import pandas as pd
 from puncta_counter.src.preprocessing import preprocess_df, reassign_puncta_to_nuclei
 from puncta_counter.src.summarize import (generate_circle, generate_ellipse, compute_mahalanobis_distances,
                                           plot_nuclei_circles_puncta, plot_nuclei_ellipses_puncta)
-from puncta_counter.utils.common import dirname_n_times
+from puncta_counter.utils.common import dirname_n_times, expand_dataframe, collapse_dataframe
 from puncta_counter.utils.plotting import save_plot_as_png
 from puncta_counter.utils.logger import configure_logger
 from puncta_counter.etc.columns import ellipse_cols, nuclei_cols, puncta_cols
@@ -46,8 +46,8 @@ def parse_args(args=None):
 
     parser.add_argument("-a", "--algos", dest="algos", nargs='+',
                         default=['confidence_ellipse',
-                                 'min_vol_ellipse',
-                                 'circle',  # deprecated
+                                 # 'min_vol_ellipse',
+                                 # 'circle',  # deprecated
                                 ],
                         action="store", required=False, help="limit scope for testing")
 
@@ -78,55 +78,111 @@ def main(args=None):
     logger = logging.getLogger(__name__)
     logger = configure_logger(logger, log_level, log_filename)
 
-    logger.info(f"running script")
 
     # ----------------------------------------------------------------------
-    # Read and filter data
+    # Process Nuclei Data
 
+    logger.info(f"Processing nuclei...")
 
     # Nuclei
     nuclei = pd.read_csv("data/nuclei.csv")
     nuclei.rename(columns={'ObjectNumber': 'NucleiObjectNumber'}, inplace=True)
-    nuclei = preprocess_df(nuclei, nuclei_cols)
+    nuclei = preprocess_df(nuclei, nuclei_cols)  # rename columns and subset
+
+    # add qc flags
     nuclei['effective_radius_nuclei'] = nuclei['area'].apply(lambda x: np.sqrt(x/np.pi))
+    eccentricity_threshold = 0.69
+    nuclei['potential_doublet'] = (nuclei['eccentricity'] >= eccentricity_threshold)
+    nuclei_major_axis_length_threshold = 128
+    nuclei['major_axis_too_long'] = (nuclei['major_axis_length'] >= nuclei_major_axis_length_threshold)
 
+    # filter
+    problem_nuclei = nuclei[
+        (nuclei['potential_doublet'] == True) |
+        (nuclei['major_axis_too_long'] == True)
+    ]  # troubleshooting only
     nuclei_subset = nuclei[
-        (nuclei['eccentricity'] < 0.69)
-        & (nuclei['major_axis_length'] < 128)
+        (nuclei['potential_doublet'] == False) &
+        (nuclei['major_axis_too_long'] == False)
     ].copy()
+    
+    problem_nuclei.to_csv('data/problem_nuclei.csv', index=None)
+    nuclei_subset.to_csv('data/nuclei_subset.csv', index=None)
+    
 
-    if args.save:
-        nuclei_subset.to_csv('data/nuclei_subset.csv', index=None)
+    # ----------------------------------------------------------------------
+    # Process Puncta Data
 
+    logger.info(f"Processing puncta...")
 
     # Puncta
     puncta = pd.read_csv("data/puncta.csv")
     puncta = puncta.rename(columns={'ObjectNumber': 'PunctaObjectNumber'})
-    puncta = preprocess_df(puncta, puncta_cols)
-    puncta = reassign_puncta_to_nuclei(puncta, nuclei)
+    puncta = preprocess_df(puncta, puncta_cols)  # rename columns and subset
 
-    min_scale = 0.7  # rescale to half the intensity ~1/np.sqrt(2) at the lowest brightness
-    intensity_col = 'mean_intensity'
-    puncta['fill_alpha'] = (puncta[intensity_col]-puncta[intensity_col].min()) / (
-        puncta[intensity_col].max()-puncta[intensity_col].min()
-    )*(1-min_scale)+(min_scale)
+    # reassign puncta to nuclei
+    index_cols = ['image_number', 'parent_manual_nuclei']
+    value_cols = [item for item in puncta.columns if item not in index_cols]  # we may not need all the value_cols
+    puncta_short = collapse_dataframe(puncta, index_cols, value_cols)
+    puncta_short['mean_center_x'] = puncta_short['center_x'].apply(np.mean)
+    puncta_short['mean_center_y'] = puncta_short['center_y'].apply(np.mean)
+    puncta_short['center'] = puncta_short[["mean_center_x", "mean_center_y"]].apply(list, axis=1)
+    puncta_short = reassign_puncta_to_nuclei(puncta_short, nuclei)
+    puncta = expand_dataframe(puncta_short, value_cols)
+    puncta = puncta.sort_values(['image_number', 'puncta_object_number']).reset_index(drop=True)
 
-    puncta_subset = pd.merge(
-        left=nuclei_subset[["image_number", 'nuclei_object_number']],
-        right=puncta.loc[:, puncta.columns != 'puncta_object_number'],
+    # can be used for confidence_ellipse weight
+    # however, this ended up not actually working as well as vanilla intensity
+    puncta['integrated_intensity_sq'] = puncta['integrated_intensity'].apply(lambda x: np.array(x)**2)
+
+    # generate fill_alpha for plotting
+    # (intensity-min_intensity) / (max_intensity-min_intensity) * (1-0.7) + 0.7
+    puncta['fill_alpha'] = (puncta['mean_intensity']-puncta['mean_intensity'].min()) / (
+        puncta['mean_intensity'].max()-puncta['mean_intensity'].min()
+    )*(1-1/np.sqrt(2))+(1/np.sqrt(2))  # rescale to half the intensity ~1/np.sqrt(2) at the lowest brightness
+
+
+    # add qc flags
+    puncta['puncta_out_of_bounds'] = (
+        (puncta["center_x"] < puncta["bounding_box_min_x_nuclei"]) |
+        (puncta["center_x"] > puncta["bounding_box_max_x_nuclei"]) |
+        (puncta["center_y"] < puncta["bounding_box_min_y_nuclei"]) |
+        (puncta["center_y"] > puncta["bounding_box_max_y_nuclei"])
+    )
+    puncta = pd.merge(
+        puncta,
+        nuclei[["image_number", 'nuclei_object_number',
+                'potential_doublet', 'major_axis_too_long',
+                'path_name_tif', 'file_name_tif']],
         left_on=["image_number", 'nuclei_object_number'],
         right_on=['image_number', 'nuclei_object_number'],
-        how="left",
-    ).dropna(subset=['parent_manual_nuclei'])  # use nuclei_subset to filter puncta
+        how='left',  
+    ).rename(columns={
+        'potential_doublet': 'nuclei_potential_doublet',
+        'major_axis_too_long': 'nuclei_major_axis_too_long'
+    })  # bring in nuclei flags
 
-    if args.save:
-        puncta_subset.to_csv('data/puncta_subset.csv', index=None)
 
-    filename_for_image_number = dict(zip(nuclei_subset['image_number'], nuclei_subset['file_name_tif']))
+    # filter
+    problem_puncta = puncta[
+        (puncta['puncta_out_of_bounds'] == True) |
+        (puncta['nuclei_potential_doublet'] == True) |
+        (puncta['nuclei_major_axis_too_long'] == True)
+    ]  # troubleshooting only
+    puncta_subset = puncta[
+        (puncta['puncta_out_of_bounds'] == False) &
+        (puncta['nuclei_potential_doublet'] == False) &
+        (puncta['nuclei_major_axis_too_long'] == False)
+    ].copy()
+
+    problem_puncta.to_csv('data/problem_puncta.csv', index=None)
+    puncta_subset.to_csv('data/puncta_subset.csv', index=None)
 
 
     # ----------------------------------------------------------------------
     # Confidence Ellipse
+
+    filename_for_image_number = dict(zip(nuclei_subset['image_number'], nuclei_subset['file_name_tif']))
 
     if 'confidence_ellipse' in args.algos:
 
@@ -150,7 +206,7 @@ def main(args=None):
         # compute final boundaries
         # unweighted_ellipses['integrated_intensity_sq'] = unweighted_ellipses['integrated_intensity'].apply(
         #     lambda x: np.array(x)**2
-        # )  # this didn't actually work well
+        # )  
         ellipses = generate_ellipse(
             unweighted_ellipses,
             algo='confidence_ellipse',
