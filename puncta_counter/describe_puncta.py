@@ -97,14 +97,12 @@ def main(args=None):
     nuclei['major_axis_too_long'] = (nuclei['major_axis_length'] >= nuclei_major_axis_length_threshold)
 
     # filter
-    problem_nuclei = nuclei[
-        (nuclei['potential_doublet'] == True) |
-        (nuclei['major_axis_too_long'] == True)
-    ]  # troubleshooting only
-    nuclei_subset = nuclei[
+    nuclei_passed_qc = (
         (nuclei['potential_doublet'] == False) &
         (nuclei['major_axis_too_long'] == False)
-    ].copy()
+    )
+    problem_nuclei = nuclei[~nuclei_passed_qc]  # troubleshooting only
+    nuclei_subset = nuclei[nuclei_passed_qc].copy()
     
     problem_nuclei.to_csv('data/problem_nuclei.csv', index=None)
     nuclei_subset.to_csv('data/nuclei_subset.csv', index=None)
@@ -163,17 +161,29 @@ def main(args=None):
     })  # bring in nuclei flags
 
 
+    # count puncta per nucleus
+    puncta.set_index(['image_number', 'nuclei_object_number'], inplace=True)
+    puncta['num_total_puncta'] = puncta.groupby(['image_number', 'nuclei_object_number'])['puncta_object_number'].count()
+    puncta['num_clean_puncta'] = puncta[
+        puncta[[
+            'puncta_out_of_bounds',
+            'nuclei_potential_doublet',
+            'nuclei_major_axis_too_long']].any(axis=1)==False
+    ].groupby(['image_number', 'nuclei_object_number'])['puncta_object_number'].count()
+    puncta['num_clean_puncta'] = puncta['num_clean_puncta'].fillna(0).astype(int)
+    puncta.reset_index(inplace=True)
+    puncta['puncta_is_background'] = (puncta['num_clean_puncta'] > 70)
+
+
     # filter
-    problem_puncta = puncta[
-        (puncta['puncta_out_of_bounds'] == True) |
-        (puncta['nuclei_potential_doublet'] == True) |
-        (puncta['nuclei_major_axis_too_long'] == True)
-    ]  # troubleshooting only
-    puncta_subset = puncta[
+    puncta_passed_qc = (
         (puncta['puncta_out_of_bounds'] == False) &
         (puncta['nuclei_potential_doublet'] == False) &
-        (puncta['nuclei_major_axis_too_long'] == False)
-    ].copy()
+        (puncta['nuclei_major_axis_too_long'] == False) &
+        (puncta['puncta_has_high_background'] == False)
+    )
+    problem_puncta = puncta[~puncta_passed_qc]  # troubleshooting only
+    puncta_subset = puncta[puncta_passed_qc].copy()
 
     problem_puncta.to_csv('data/problem_puncta.csv', index=None)
     puncta_subset.to_csv('data/puncta_subset.csv', index=None)
