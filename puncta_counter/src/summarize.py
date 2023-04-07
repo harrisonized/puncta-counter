@@ -171,8 +171,8 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
         ellipses_data,
         x='center_x',
         y='center_y',
-        height="minor_axis_length",  # this is the reverse of CellProfiler orientation
-        width="major_axis_length",  # this is the reverse of CellProfiler orientation
+        height="major_axis_length",
+        width="minor_axis_length",
         angle="orientation",
         angle_units='deg',
         text="nuclei_object_number",

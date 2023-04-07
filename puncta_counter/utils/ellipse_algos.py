@@ -48,17 +48,17 @@ def confidence_ellipse(P, aweights=None, n_std=1, **kwargs):
     if eig_vals[0] >= eig_vals[1]:
         major_axis_length = (2 * major_radius) * np.sqrt(cov[0, 0]) * n_std
         minor_axis_length = (2 * minor_radius) * np.sqrt(cov[1, 1]) * n_std
-        # np.arccos outputs range of [0, pi], so orientation range is in [-90, 90]
-        orientation = 90-np.arccos(eig_vecs[1, 0])/np.pi*180
+        # np.arccos outputs range of [0, pi], so orientation range is in [-180, 0]
+        orientation = -np.arccos(eig_vecs[1, 0])/np.pi*180
+        # correct the orientation range to be [-90, 90]
+        if orientation < -90:
+            orientation = orientation + 180
     else:
         major_axis_length = (2 * major_radius) * np.sqrt(cov[1, 1]) * n_std
         minor_axis_length = (2 * minor_radius) * np.sqrt(cov[0, 0]) * n_std
-        # np.arcsin outputs range of [-pi/2, pi/2], so orientation range is in [0, 180]
-        orientation = 90-np.arcsin(eig_vecs[1, 0])/np.pi*180
-        # correct the orientation range to be [-90, 90]
-        if orientation > 90:
-            orientation = orientation - 180  
-    
+        # np.arcsin outputs range of [-pi/2, pi/2], so orientation range is in [-90, 90]
+        orientation = np.arcsin(eig_vecs[1, 0])/np.pi*180
+
     return center_x, center_y, major_axis_length, minor_axis_length, orientation
 
 
