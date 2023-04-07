@@ -91,21 +91,8 @@ def main(args=None):
 
     # add qc flags
     nuclei['effective_radius_nuclei'] = nuclei['area'].apply(lambda x: np.sqrt(x/np.pi))
-    eccentricity_threshold = 0.69
-    nuclei['potential_doublet'] = (nuclei['eccentricity'] >= eccentricity_threshold)
-    nuclei_major_axis_length_threshold = 128
-    nuclei['major_axis_too_long'] = (nuclei['major_axis_length'] >= nuclei_major_axis_length_threshold)
-
-    # filter
-    nuclei_passed_qc = (
-        (nuclei['potential_doublet'] == False) &
-        (nuclei['major_axis_too_long'] == False)
-    )
-    problem_nuclei = nuclei[~nuclei_passed_qc]  # troubleshooting only
-    nuclei_subset = nuclei[nuclei_passed_qc].copy()
-    
-    problem_nuclei.to_csv('data/problem_nuclei.csv', index=None)
-    nuclei_subset.to_csv('data/nuclei_subset.csv', index=None)
+    nuclei['potential_doublet'] = (nuclei['eccentricity'] >= 0.69)  # eccentricity threshold
+    nuclei['major_axis_too_long'] = (nuclei['major_axis_length'] >= 128)
     
 
     # ----------------------------------------------------------------------
@@ -125,13 +112,13 @@ def main(args=None):
     puncta_short['mean_center_x'] = puncta_short['center_x'].apply(np.mean)
     puncta_short['mean_center_y'] = puncta_short['center_y'].apply(np.mean)
     puncta_short['center'] = puncta_short[["mean_center_x", "mean_center_y"]].apply(list, axis=1)
-    puncta_short = reassign_puncta_to_nuclei(puncta_short, nuclei)
+    puncta_short = reassign_puncta_to_nuclei(puncta_short, nuclei)  # use all nuclei for this for better assignment
     puncta = expand_dataframe(puncta_short, value_cols)
     puncta = puncta.sort_values(['image_number', 'puncta_object_number']).reset_index(drop=True)
 
     # can be used for confidence_ellipse weight
     # however, this ended up not actually working as well as vanilla intensity
-    puncta['integrated_intensity_sq'] = puncta['integrated_intensity'].apply(lambda x: np.array(x)**2)
+    # puncta['integrated_intensity_sq'] = puncta['integrated_intensity'].apply(lambda x: np.array(x)**2)
 
     # generate fill_alpha for plotting
     # (intensity-min_intensity) / (max_intensity-min_intensity) * (1-0.7) + 0.7
@@ -147,6 +134,8 @@ def main(args=None):
         (puncta["center_y"] < puncta["bounding_box_min_y_nuclei"]) |
         (puncta["center_y"] > puncta["bounding_box_max_y_nuclei"])
     )
+
+    # bring in nuclei flags and nuclei_object_number
     puncta = pd.merge(
         puncta,
         nuclei[["image_number", 'nuclei_object_number',
@@ -158,29 +147,46 @@ def main(args=None):
     ).rename(columns={
         'potential_doublet': 'nuclei_potential_doublet',
         'major_axis_too_long': 'nuclei_major_axis_too_long'
-    })  # bring in nuclei flags
-
+    })  
 
     # count puncta per nucleus
     puncta.set_index(['image_number', 'nuclei_object_number'], inplace=True)
-    puncta['num_total_puncta'] = puncta.groupby(['image_number', 'nuclei_object_number'])['puncta_object_number'].count()
+    puncta['num_total_puncta'] = puncta.groupby(
+        ['image_number', 'nuclei_object_number']
+    )['puncta_object_number'].count()
     puncta['num_clean_puncta'] = puncta[
-        puncta[[
-            'puncta_out_of_bounds',
-            'nuclei_potential_doublet',
-            'nuclei_major_axis_too_long']].any(axis=1)==False
+        puncta[['puncta_out_of_bounds',
+                'nuclei_potential_doublet',
+                'nuclei_major_axis_too_long'
+        ]].any(axis=1)==False
     ].groupby(['image_number', 'nuclei_object_number'])['puncta_object_number'].count()
     puncta['num_clean_puncta'] = puncta['num_clean_puncta'].fillna(0).astype(int)
     puncta.reset_index(inplace=True)
-    puncta['puncta_is_background'] = (puncta['num_clean_puncta'] > 70)
+
+    puncta['high_background_puncta'] = (puncta['num_clean_puncta'] > 70)  # should filter nuclei associated with this too
 
 
-    # filter
+    # ----------------------------------------------------------------------
+    # Filter
+
+    logger.info(f"Filtering...")
+
+    nuclei_passed_qc = (
+        (nuclei['potential_doublet'] == False) &
+        (nuclei['major_axis_too_long'] == False)
+    )
+    problem_nuclei = nuclei[~nuclei_passed_qc]  # troubleshooting only
+    nuclei_subset = nuclei[nuclei_passed_qc].copy()
+    
+    problem_nuclei.to_csv('data/problem_nuclei.csv', index=None)
+    nuclei_subset.to_csv('data/nuclei_subset.csv', index=None)
+
+
     puncta_passed_qc = (
         (puncta['puncta_out_of_bounds'] == False) &
         (puncta['nuclei_potential_doublet'] == False) &
         (puncta['nuclei_major_axis_too_long'] == False) &
-        (puncta['puncta_has_high_background'] == False)
+        (puncta['high_background_puncta'] == False)
     )
     problem_puncta = puncta[~puncta_passed_qc]  # troubleshooting only
     puncta_subset = puncta[puncta_passed_qc].copy()
@@ -188,6 +194,7 @@ def main(args=None):
     problem_puncta.to_csv('data/problem_puncta.csv', index=None)
     puncta_subset.to_csv('data/puncta_subset.csv', index=None)
 
+    
 
     # ----------------------------------------------------------------------
     # Confidence Ellipse
