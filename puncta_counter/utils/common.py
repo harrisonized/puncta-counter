@@ -7,7 +7,7 @@ import re
 # # title_to-snake_case
 # # camel_to_snake_case
 # # flatten_columns
-# # json_to_dataframe
+# # dataframe_from_json
 # # collapse_dataframe
 # # expand_dataframe
 
@@ -40,7 +40,7 @@ def flatten_columns(multicols):
     return [f'{cols[0].lower()}_{cols[1]}'.strip('_') for cols in multicols]
 
 
-def json_to_dataframe(json, colnames=[],):
+def dataframe_from_json(json, colnames=[],):
     """
     Example:
     smears = {
