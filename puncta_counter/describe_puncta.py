@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 
-"""Takes nuclei.csv and puncta.csv files, computes boundaries, then plots using Bokeh
-This script is still in development and not ready for use
-As of 04/01/2023, this script has a basic level of outlier filtering prior to plotting
+"""Takes nuclei.csv and puncta.csv files as inputs
+1. Computes metrics on nuclei
+2. Assigns puncta to nearest nuclei
+3. Computes metrics on puncta
+4. Splits nuclei into problem_nuclei and nuclei_subset (and same for puncta)
+5. Uses first pass confidence_ellipse to filter outliers
+6. Uses second pass confidence_ellipse to calculate diptest
+7. Plot confidence ellipse
 """
 
 import os
@@ -13,6 +18,7 @@ import logging
 import datetime as dt
 import numpy as np
 import pandas as pd
+import diptest
 
 from puncta_counter.src.preprocessing import preprocess_df, reassign_puncta_to_nuclei
 from puncta_counter.src.summarize import (generate_circle, generate_ellipse, compute_mahalanobis_distances,
@@ -225,26 +231,68 @@ def main(args=None):
     ellipses_first_pass.drop(columns=['centers'], inplace=True)
     ellipses_first_pass['mahalanobis_outlier'] = (ellipses_first_pass['mahalanobis_distances'] >= 1.5)
 
-    # compute final boundaries
-    # ellipses_first_pass['integrated_intensity_sq'] = ellipses_first_pass['integrated_intensity'].apply(
-    #     lambda x: np.array(x)**2
-    # )  
+    # second pass
+    # detect doublets
     ellipses = generate_ellipse(
         ellipses_first_pass[(ellipses_first_pass['mahalanobis_outlier']==False)].copy(),
         algo='confidence_ellipse',
         aweights='integrated_intensity',
         n_std=2
     )
+    ellipses = compute_mahalanobis_distances(ellipses)  # note: this expands the dataframe
+    ellipses.rename(columns={'center_x': 'mean_center_x', 'center_y': 'mean_center_y'}, inplace=True)
+    ellipses['center_x'] = ellipses['centers'].apply(lambda x: x[0])
+    ellipses['center_y'] = ellipses['centers'].apply(lambda x: x[1])
+    ellipses.drop(columns=['centers'], inplace=True)
+    
+    ellipses['mahalanobis_x'] = ellipses['mahalanobis_coordinates'].apply(lambda x: np.nan if x is None else x[0])
+    ellipses['mahalanobis_y'] = ellipses['mahalanobis_coordinates'].apply(lambda x: np.nan if x is None else x[1])
+    ellipses.drop(columns=['mahalanobis_distances'], inplace=True)
+    ellipses = collapse_dataframe(
+        ellipses,
+        index_cols=['image_number', 'nuclei_object_number'] +
+            ['major_axis_length', 'minor_axis_length', 'orientation', 'mean_center_x', 'mean_center_y'],
+        value_cols=['center_x', 'center_y', 'mahalanobis_x', 'mahalanobis_y']
+    )
+    
+
+    # ----------------------------------------------------------------------
+    # Puncta Doublet Detection
+
+    ellipses['num_puncta'] = ellipses['mahalanobis_x'].apply(len)
+    ellipses['eccentricity'] = np.sqrt(1-(ellipses['minor_axis_length']/ellipses['major_axis_length'])**2)
+
+    ellipses['dip'] = ellipses['mahalanobis_x'].apply(
+        lambda x: diptest.diptest(np.array(x)) if len(x) > 3 else (np.nan, np.nan)
+    )
+    ellipses['diptest_dip'] = ellipses['dip'].apply(lambda x: x[0])
+    ellipses['diptest_pval'] = ellipses['dip'].apply(lambda x: x[1])
+
+    ellipses['puncta_doublet'] = (
+        (ellipses['eccentricity'] > np.sqrt(1-1/2**2)) &   # major_axis_length at least 2x the minor_axis_length
+        (ellipses['major_axis_length'] > 54) &   # the min minor_axis_length
+        (ellipses['diptest_dip'] < 0.1) &
+        (ellipses['diptest_pval'] < 0.25)  # less than 25% confident that the distribution is univariate
+    )
+
+    # find a better way to do this...
+    ellipses['center_x'] = ellipses['mean_center_x']
+    ellipses['center_y'] = ellipses['mean_center_y']
 
     # Save
     if args.save:
-        ellipses_first_pass[
-            ['image_number', 'nuclei_object_number'] + ellipse_cols + ['mahalanobis_outlier']
-        ].to_csv('data/troubleshooting/confidence_ellipses_first_pass.csv', index=None)
+        # ellipses_first_pass[
+        #     ['image_number', 'nuclei_object_number'] + ellipse_cols + ['mahalanobis_outlier']
+        # ].to_csv('data/troubleshooting/confidence_ellipses_first_pass.csv', index=None)
         ellipses[
-            ['image_number', 'nuclei_object_number'] + ellipse_cols
+            ['image_number', 'nuclei_object_number'] +
+            ellipse_cols + 
+            ['eccentricity', 'diptest_dip', 'diptest_pval', 'puncta_doublet']
         ].to_csv('data/confidence_ellipse.csv', index=None)
 
+
+    # ----------------------------------------------------------------------
+    # Plot Confidence Ellipse
 
     logger.info(f"Plotting...")
     for image_number in tqdm(nuclei_subset['image_number'].unique()):
@@ -261,6 +309,7 @@ def main(args=None):
 
     # ----------------------------------------------------------------------
     # Mimimum Bounding Ellipse
+    # This might also be deprecated?
 
     if 'min_vol_ellipse' in args.algos:
 
