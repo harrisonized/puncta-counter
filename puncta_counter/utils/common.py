@@ -71,7 +71,7 @@ def json_to_dataframe(json, colnames=[],):
     return df
 
 
-def collapse_dataframe(df, index_cols, value_cols):
+def collapse_dataframe(df, index_cols, value_cols=[]):
     """
     """
     collapsed = (df
@@ -79,6 +79,9 @@ def collapse_dataframe(df, index_cols, value_cols):
         .agg(list)
         .reset_index()
     )
+    if len(value_cols)==0:
+        collapsed.drop(columns=[0], inplace=True)
+        
     return collapsed
 
 

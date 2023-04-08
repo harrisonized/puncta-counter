@@ -84,12 +84,11 @@ def main(args=None):
 
     logger.info(f"Processing nuclei...")
 
-    # Nuclei
     nuclei = pd.read_csv("data/nuclei.csv")
     nuclei.rename(columns={'ObjectNumber': 'NucleiObjectNumber'}, inplace=True)
     nuclei = preprocess_df(nuclei, nuclei_cols)  # rename columns and subset
 
-    # add qc flags
+    # metrics
     nuclei['effective_radius_nuclei'] = nuclei['area'].apply(lambda x: np.sqrt(x/np.pi))
     nuclei['potential_doublet'] = (nuclei['eccentricity'] >= 0.69)  # eccentricity threshold
     nuclei['major_axis_too_long'] = (nuclei['major_axis_length'] >= 128)
@@ -100,7 +99,6 @@ def main(args=None):
 
     logger.info(f"Processing puncta...")
 
-    # Puncta
     puncta = pd.read_csv("data/puncta.csv")
     puncta = puncta.rename(columns={'ObjectNumber': 'PunctaObjectNumber'})
     puncta = preprocess_df(puncta, puncta_cols)  # rename columns and subset
@@ -116,25 +114,6 @@ def main(args=None):
     puncta = expand_dataframe(puncta_short, value_cols)
     puncta = puncta.sort_values(['image_number', 'puncta_object_number']).reset_index(drop=True)
 
-    # can be used for confidence_ellipse weight
-    # however, this ended up not actually working as well as vanilla intensity
-    # puncta['integrated_intensity_sq'] = puncta['integrated_intensity'].apply(lambda x: np.array(x)**2)
-
-    # generate fill_alpha for plotting
-    # (intensity-min_intensity) / (max_intensity-min_intensity) * (1-0.7) + 0.7
-    puncta['fill_alpha'] = (puncta['mean_intensity']-puncta['mean_intensity'].min()) / (
-        puncta['mean_intensity'].max()-puncta['mean_intensity'].min()
-    )*(1-1/np.sqrt(2))+(1/np.sqrt(2))  # rescale to half the intensity ~1/np.sqrt(2) at the lowest brightness
-
-
-    # add qc flags
-    puncta['puncta_out_of_bounds'] = (
-        (puncta["center_x"] < puncta["bounding_box_min_x_nuclei"]) |
-        (puncta["center_x"] > puncta["bounding_box_max_x_nuclei"]) |
-        (puncta["center_y"] < puncta["bounding_box_min_y_nuclei"]) |
-        (puncta["center_y"] > puncta["bounding_box_max_y_nuclei"])
-    )
-
     # bring in nuclei flags and nuclei_object_number
     puncta = pd.merge(
         puncta,
@@ -147,18 +126,36 @@ def main(args=None):
     ).rename(columns={
         'potential_doublet': 'nuclei_potential_doublet',
         'major_axis_too_long': 'nuclei_major_axis_too_long'
-    })  
+    })
+
+
+    # metrics
+
+    # can be used for confidence_ellipse weight
+    # however, this ended up not actually working as well as vanilla intensity
+    # puncta['integrated_intensity_sq'] = puncta['integrated_intensity'].apply(lambda x: np.array(x)**2)
+
+    # generate fill_alpha for plotting
+    # (intensity-min_intensity) / (max_intensity-min_intensity) * (1-0.7) + 0.7
+    puncta['fill_alpha'] = (puncta['mean_intensity']-puncta['mean_intensity'].min()) / (
+        puncta['mean_intensity'].max()-puncta['mean_intensity'].min()
+    )*(1-1/np.sqrt(2))+(1/np.sqrt(2))  # rescale to half the intensity ~1/np.sqrt(2) at the lowest brightness
+
+    # add qc flags
+    puncta['puncta_out_of_bounds'] = (
+        (puncta["center_x"] < puncta["bounding_box_min_x_nuclei"]) |
+        (puncta["center_x"] > puncta["bounding_box_max_x_nuclei"]) |
+        (puncta["center_y"] < puncta["bounding_box_min_y_nuclei"]) |
+        (puncta["center_y"] > puncta["bounding_box_max_y_nuclei"])
+    )
 
     # count puncta per nucleus
     puncta.set_index(['image_number', 'nuclei_object_number'], inplace=True)
-    puncta['num_total_puncta'] = puncta.groupby(
-        ['image_number', 'nuclei_object_number']
-    )['puncta_object_number'].count()
+    puncta['num_total_puncta'] = puncta.groupby(['image_number', 'nuclei_object_number'])['puncta_object_number'].count()
     puncta['num_clean_puncta'] = puncta[
-        puncta[['puncta_out_of_bounds',
-                'nuclei_potential_doublet',
-                'nuclei_major_axis_too_long'
-        ]].any(axis=1)==False
+        (puncta[
+            ['puncta_out_of_bounds', 'nuclei_potential_doublet', 'nuclei_major_axis_too_long']
+         ].any(axis=1)==False)
     ].groupby(['image_number', 'nuclei_object_number'])['puncta_object_number'].count()
     puncta['num_clean_puncta'] = puncta['num_clean_puncta'].fillna(0).astype(int)
     puncta.reset_index(inplace=True)
@@ -170,16 +167,28 @@ def main(args=None):
     # Filter
 
     logger.info(f"Filtering...")
+    index_cols=['image_number', 'nuclei_object_number', 'num_total_puncta', 'num_clean_puncta', 'high_background_puncta']
+    puncta_short = collapse_dataframe(puncta, index_cols, value_cols=[])
+    nuclei = pd.merge(
+        nuclei, puncta_short,
+        left_on=['image_number', 'nuclei_object_number'],
+        right_on=['image_number', 'nuclei_object_number'],
+        how='left'
+    )
+    nuclei[['num_total_puncta', 'num_clean_puncta']] = nuclei[['num_total_puncta', 'num_clean_puncta']].fillna(0)
+    nuclei['high_background_puncta'] = nuclei['high_background_puncta'].fillna(False)
 
     nuclei_passed_qc = (
         (nuclei['potential_doublet'] == False) &
-        (nuclei['major_axis_too_long'] == False)
+        (nuclei['major_axis_too_long'] == False) &
+        (nuclei['high_background_puncta'] == False)
     )
     problem_nuclei = nuclei[~nuclei_passed_qc]  # troubleshooting only
     nuclei_subset = nuclei[nuclei_passed_qc].copy()
-    
-    problem_nuclei.to_csv('data/problem_nuclei.csv', index=None)
-    nuclei_subset.to_csv('data/nuclei_subset.csv', index=None)
+
+    if args.save:
+        problem_nuclei.to_csv('data/troubleshooting/problem_nuclei.csv', index=None)
+        nuclei_subset.to_csv('data/nuclei_subset.csv', index=None)
 
 
     puncta_passed_qc = (
@@ -191,62 +200,64 @@ def main(args=None):
     problem_puncta = puncta[~puncta_passed_qc]  # troubleshooting only
     puncta_subset = puncta[puncta_passed_qc].copy()
 
-    problem_puncta.to_csv('data/problem_puncta.csv', index=None)
-    puncta_subset.to_csv('data/puncta_subset.csv', index=None)
+    if args.save:
+        problem_puncta.to_csv('data/troubleshooting/problem_puncta.csv', index=None)
+        puncta_subset.to_csv('data/puncta_subset.csv', index=None)
 
-    
 
     # ----------------------------------------------------------------------
     # Confidence Ellipse
 
     filename_for_image_number = dict(zip(nuclei_subset['image_number'], nuclei_subset['file_name_tif']))
 
-    if 'confidence_ellipse' in args.algos:
+    logger.info(f"Generating confidence ellipses...")
 
-        logger.info(f"Generating confidence ellipse...")
+    # first pass
+    ellipses_first_pass = generate_ellipse(
+        puncta_subset,
+        algo='confidence_ellipse',
+        aweights=None,
+        n_std=1
+    )  # note: this collapses the dataframe
+    ellipses_first_pass = compute_mahalanobis_distances(ellipses_first_pass)  # note: this expands the dataframe
+    ellipses_first_pass['center_x'] = ellipses_first_pass['centers'].apply(lambda x: x[0])
+    ellipses_first_pass['center_y'] = ellipses_first_pass['centers'].apply(lambda x: x[1])
+    ellipses_first_pass.drop(columns=['centers'], inplace=True)
+    ellipses_first_pass['mahalanobis_outlier'] = (ellipses_first_pass['mahalanobis_distances'] >= 1.5)
 
-        # used to filter outliers
-        unweighted_ellipses = generate_ellipse(
-            puncta_subset,
-            algo='confidence_ellipse',
-            aweights=None,
-            n_std=1
+    # compute final boundaries
+    # ellipses_first_pass['integrated_intensity_sq'] = ellipses_first_pass['integrated_intensity'].apply(
+    #     lambda x: np.array(x)**2
+    # )  
+    ellipses = generate_ellipse(
+        ellipses_first_pass[(ellipses_first_pass['mahalanobis_outlier']==False)].copy(),
+        algo='confidence_ellipse',
+        aweights='integrated_intensity',
+        n_std=2
+    )
+
+    # Save
+    if args.save:
+        ellipses_first_pass[
+            ['image_number', 'nuclei_object_number'] + ellipse_cols + ['mahalanobis_outlier']
+        ].to_csv('data/troubleshooting/confidence_ellipses_first_pass.csv', index=None)
+        ellipses[
+            ['image_number', 'nuclei_object_number'] + ellipse_cols
+        ].to_csv('data/confidence_ellipse.csv', index=None)
+
+
+    logger.info(f"Plotting...")
+    for image_number in tqdm(nuclei_subset['image_number'].unique()):
+        title = filename_for_image_number[image_number].split('.')[0]
+
+        plot = plot_nuclei_ellipses_puncta(
+            nuclei=nuclei_subset.loc[(nuclei_subset['image_number']==image_number)],
+            ellipses=ellipses.loc[(ellipses['image_number']==image_number)],
+            puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
+            title=title
         )
+        save_plot_as_png(plot, f"figures/confidence_ellipse/{title}.png")
 
-        # filter outliers mahalanobis_distances >= 1.5
-        unweighted_ellipses = compute_mahalanobis_distances(unweighted_ellipses)
-        unweighted_ellipses['center_x'] = unweighted_ellipses['centers'].apply(lambda x: x[0])
-        unweighted_ellipses['center_y'] = unweighted_ellipses['centers'].apply(lambda x: x[1])
-        unweighted_ellipses.drop(columns=['centers'], inplace=True)
-        unweighted_ellipses = unweighted_ellipses[(unweighted_ellipses['mahalanobis_distances'] < 1.5)]  # filter
-
-        # compute final boundaries
-        # unweighted_ellipses['integrated_intensity_sq'] = unweighted_ellipses['integrated_intensity'].apply(
-        #     lambda x: np.array(x)**2
-        # )  
-        ellipses = generate_ellipse(
-            unweighted_ellipses,
-            algo='confidence_ellipse',
-            aweights='integrated_intensity',
-            n_std=2
-        )
-
-        if args.save:
-            ellipses[['image_number', 'nuclei_object_number'] + ellipse_cols].to_csv(
-                'data/ellipses/confidence_ellipse.csv', index=None
-            )
-
-        for image_number in tqdm(nuclei_subset['image_number'].unique()):
-            title = filename_for_image_number[image_number].split('.')[0]
-
-            plot = plot_nuclei_ellipses_puncta(
-                nuclei=nuclei_subset.loc[(nuclei_subset['image_number']==image_number)],
-                ellipses=ellipses.loc[(ellipses['image_number']==image_number)],
-                puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
-                title=title
-            )
-
-            save_plot_as_png(plot, f"figures/confidence_ellipse/{title}.png")
 
     # ----------------------------------------------------------------------
     # Mimimum Bounding Ellipse

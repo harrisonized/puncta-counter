@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import t
 
-from puncta_counter.utils.common import flatten_columns, expand_dataframe
+from puncta_counter.utils.common import flatten_columns, expand_dataframe, collapse_dataframe
 from puncta_counter.utils.ellipse_algos import (confidence_ellipse, min_vol_ellipse,
 	                                            mahalanobis_transform, compute_euclidean_distance_from_origin)
 from puncta_counter.utils.plotting import (plot_circle_using_bokeh,
@@ -36,20 +36,16 @@ def generate_ellipse(
      "orientation"]
     """
 
+    # collapse data
     puncta['centers'] = puncta[['center_x', 'center_y']].apply(list, axis=1)
     cols = list(set(["centers", "integrated_intensity"]+([] if aweights is None else [aweights])))
-    
-    ellipses = (
-        puncta
-        .groupby(['image_number', 'nuclei_object_number'])[cols]
-        .agg(list)
-        .reset_index()
-    ).copy()
-    
-    # convert this: [[330.3, 52.7], [329.6, 54.8], [333.9, 54.8, 54.9]]
-    # to this: [[330.3, 329.6 , 333.9],
-    #           [52.7, 54.8, 54.9]]    
+    ellipses = collapse_dataframe(
+        puncta,
+        index_cols=['image_number', 'nuclei_object_number'],
+        value_cols=cols
+    )  
     ellipses['centers'] = ellipses['centers'].apply(lambda x: np.transpose(np.array(x)))
+
     
     if algo == 'min_vol_ellipse':
         ellipses[ellipse_cols] = pd.DataFrame(
