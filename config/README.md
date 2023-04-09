@@ -1,0 +1,1 @@
+Use this to manually filter puncta that you don't want to end up in the final analysis. An example has been provided. Rename it to `exclusion_list` to use it.
