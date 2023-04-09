@@ -12,6 +12,7 @@ from puncta_counter.etc.columns import ellipse_cols
 
 # Functions
 # # generate_ellipse
+# # two_pass_confidence_ellipse
 # # generate_circle
 # # compute_mahalanobis_distances
 # # plot_nuclei_ellipses_puncta
@@ -22,11 +23,13 @@ from puncta_counter.etc.columns import ellipse_cols
 
 
 def generate_ellipse(
-        puncta,
+        puncta,  # note: This must be a COLLAPSED ellipse!
         algo='confidence_ellipse',
         aweights=None,
-        n_std=2,  # algo='confidence_ellipse'
-        tolerance=0.01  # algo='min_vol_ellipse'
+        n_std=1,
+        mahalanobis_threshold = 1.5,
+        suffix='',
+        # tolerance=0.01  # algo='min_vol_ellipse'
     ):
     """Generates an ellipse, which comes with the following dimensions:
     ["center_x",
@@ -36,17 +39,6 @@ def generate_ellipse(
      "orientation"]
     """
 
-    # collapse data
-    puncta['centers'] = puncta[['center_x', 'center_y']].apply(list, axis=1)
-    cols = list(set(["centers", "integrated_intensity"]+([] if aweights is None else [aweights])))
-    ellipses = collapse_dataframe(
-        puncta,
-        index_cols=['image_number', 'nuclei_object_number'],
-        value_cols=cols
-    )  
-    ellipses['centers'] = ellipses['centers'].apply(lambda x: np.transpose(np.array(x)))
-
-    
     if algo == 'min_vol_ellipse':
         ellipses[ellipse_cols] = pd.DataFrame(
             ellipses["centers"]
@@ -55,24 +47,57 @@ def generate_ellipse(
         )
 
     elif algo == 'confidence_ellipse':
-        ellipses[ellipse_cols] = pd.DataFrame(
-            ellipses[cols]
+        cols = [f'{col}{suffix}' for col in ellipse_cols]
+        ellipse_args = [f'{col}{suffix}' for col
+                        in ['center_puncta', 'major_axis_length', 'minor_axis_length', 'orientation']]
+        
+        ellipses = pd.DataFrame(
+            puncta
             .apply(lambda x: confidence_ellipse(
-                x['centers'],
+                x[f'center_puncta{suffix}'],
                 aweights=aweights if aweights is None else x[aweights],
-                n_std=n_std,
+                n_std=n_std
             ), axis=1)
-            .to_list()
+            .to_list(), columns=cols
         )
+        puncta[cols] = ellipses  # add to input object
+
+        # mahalanobis transform
+        puncta[f'mahalanobis_coordinates{suffix}'] = puncta[ellipse_args].apply(
+            lambda x: mahalanobis_transform(*x), axis=1)
+        puncta[f'mahalanobis_distances{suffix}'] = puncta[f'mahalanobis_coordinates{suffix}'].apply(
+            compute_euclidean_distance_from_origin)
+        puncta[f'is_mahalanobis_outlier{suffix}'] = puncta[f'mahalanobis_distances{suffix}'].apply(
+            lambda x: np.array(x >= mahalanobis_threshold))
         
     else:
         raise ValueError("Choose one: ['min_vol_ellipse', 'confidence_ellipse']")
 
-    # The chosen ellipse algos work for normal x, y coordinates.
-    # Images have a reversed y coordinate.
-    ellipses['orientation'] = -ellipses['orientation']
-    
-    return ellipses
+    return puncta
+
+
+def two_pass_confidence_ellipse(puncta_short):
+
+    # first pass ellipse
+    puncta_short[f'center_puncta_first_pass'] = puncta_short[
+        ['center_x_puncta', 'center_y_puncta']
+    ].apply(lambda x: np.array(list(x)), axis=1)
+    puncta_short = generate_ellipse(puncta_short, suffix='_first_pass')
+
+    # second pass ellipse
+    for col in ['parent_manual_nuclei', 'puncta_object_number',
+                'center_x_puncta', 'center_y_puncta', 'integrated_intensity']:
+        puncta_short[col] = puncta_short[col].apply(np.array)
+        puncta_short[f'{col}_second_pass'] = puncta_short[
+            [col, 'is_mahalanobis_outlier_first_pass']
+        ].apply(lambda x: x[0][~x[1]], axis=1)
+
+    puncta_short['center_puncta_second_pass'] = puncta_short[
+        ['center_x_puncta_second_pass', 'center_y_puncta_second_pass']
+    ].apply(lambda x: np.array(list(x)), axis=1)
+    puncta_short = generate_ellipse(puncta_short, aweights='integrated_intensity_second_pass', n_std=2, suffix='_second_pass')
+
+    return puncta_short
 
 
 def generate_circle(puncta):
