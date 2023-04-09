@@ -89,9 +89,11 @@ def expand_dataframe(df, value_cols):
     """Use this to explode multiple columns if pandas version < 1.3.0.
     This is the opposite operation of collapse_dataframe
     """
+    df = df.copy()
     df['tmp'] = df[value_cols].apply(lambda x: list(zip(*x)), axis=1)
     df = df.explode('tmp')
     for idx, col in enumerate(value_cols):
         df[col] = df['tmp'].apply(lambda x: x[idx])
-    
-    return df.drop(columns=['tmp']).reset_index(drop=True)
+    df.drop(columns=['tmp'], inplace=True)
+
+    return df.reset_index(drop=True)

@@ -45,4 +45,4 @@ This project is licensed under the terms of the [MIT license](https://github.com
 
 ## Getting Help
 
-Always feel free to email me at [harrison.c.wang@gmail.com](mailto: harrison.c.wang@gmail.com).
+Always feel free to email me at harrison.c.wang@gmail.com.

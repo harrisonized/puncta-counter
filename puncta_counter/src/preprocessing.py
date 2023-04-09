@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 from puncta_counter.etc.columns import puncta_cols
 from puncta_counter.utils.common import camel_to_snake_case
-from puncta_counter.utils.ellipse_algos import find_nearest_point
+from puncta_counter.utils.clustering_algos import find_nearest_point
+from puncta_counter.utils.common import collapse_dataframe, expand_dataframe
 
 
 # Functions
@@ -37,38 +38,83 @@ def preprocess_df(df, columns):
     return df_subset
 
 
-def reassign_puncta_to_nuclei(puncta, nuclei):
+def reassign_puncta_to_nuclei(puncta, nuclei, extra_cols=[]):
     """If the nuclei and puncta were generated at different times, they could be numbered differently
-    This reassigns the parent_manual_nuclei so that it lines up with nuclei_object_number
+    
+    This uses the find_nearest_point algorithm to match each (center_x_puncta, center_y_puncta)
+    to the nearest (center_x_nuclei, center_y_nuclei) coordinate, then uses that coordinate to assign
+    a nuclei_object_number.
+    
+    In general, this shouldn't be an issue.
     """
+
+    index_cols = ['image_number', 'parent_manual_nuclei']
+    value_cols = [item for item in puncta.columns if item not in index_cols]
+    puncta_short = collapse_dataframe(puncta, index_cols, value_cols)  # collapse so that each row is one cloud
+    puncta_short['num_total_puncta_in_nucleus'] = puncta_short['puncta_object_number'].apply(len)
+    puncta_short['mean_center_x_puncta'] = puncta_short['center_x'].apply(np.mean)
+    puncta_short['mean_center_y_puncta'] = puncta_short['center_y'].apply(np.mean)
 
     # use the find_nearest_point algorithm to find the center of the closest nuclei
     # there are more nuclei than puncta, so this is fine
-    puncta[["closest_nuclei_x", "closest_nuclei_y"]] = pd.DataFrame(
-        puncta[["image_number", "center"]].apply(
+    puncta_short[["_center_x_nuclei", "_center_y_nuclei"]] = pd.DataFrame(
+        puncta_short[["image_number", "mean_center_x_puncta", "mean_center_y_puncta"]].apply(
         lambda x: find_nearest_point(
-            point=x["center"],
+            point=(x['mean_center_x_puncta'], x['mean_center_y_puncta']),
             points=nuclei.loc[(nuclei["image_number"]==x["image_number"]),
                               ["center_x", "center_y"]].to_records(index=False)
         )
         , axis=1).to_list(),
-        columns=["closest_nuclei_x", "closest_nuclei_y"],
+        columns=["_center_x_nuclei", "_center_y_nuclei"],
     )
 
     # left join nuclei_table on closest_nuclei_x and closest_nuclei_y
-    puncta = pd.merge(
-        left=puncta,
-        right=nuclei[[
-            "center_x", "center_y", "image_number", "nuclei_object_number",
-            "bounding_box_min_x", "bounding_box_max_x",
-            "bounding_box_min_y", "bounding_box_max_y"
-        ]],
-        left_on=["image_number", "closest_nuclei_x", "closest_nuclei_y"],
+    puncta_short = pd.merge(
+        left=puncta_short,
+        right=nuclei[["image_number", "center_x", "center_y",
+                      "nuclei_object_number"]+extra_cols],
+        left_on=["image_number", "_center_x_nuclei", "_center_y_nuclei"],
         right_on=["image_number", "center_x", "center_y"],
         how="left",
         suffixes=("", "_nuclei")
-    )
-    
-    puncta = puncta.drop(columns=['closest_nuclei_x', 'closest_nuclei_y'])
+    ).drop(columns=["_center_x_nuclei", "_center_y_nuclei"])
 
+    puncta = expand_dataframe(puncta_short, value_cols)
+    puncta = puncta.sort_values(['image_number', 'puncta_object_number']).reset_index(drop=True)
+
+    return puncta
+
+
+def compute_puncta_metrics(puncta):
+    """General purpose dumping ground for metrics
+    'puncta_out_of_bounds', 'num_clean_puncta_in_nucleus', 'high_background_puncta', 'fill_alpha'
+    """
+    
+    # puncta metrics
+    puncta['puncta_out_of_bounds'] = (
+        (puncta["center_x"] < puncta["bounding_box_min_x_nuclei"]) |
+        (puncta["center_x"] > puncta["bounding_box_max_x_nuclei"]) |
+        (puncta["center_y"] < puncta["bounding_box_min_y_nuclei"]) |
+        (puncta["center_y"] > puncta["bounding_box_max_y_nuclei"]))
+
+    # find background puncta
+    index_cols = ['image_number', 'nuclei_object_number']
+    qc_flags = ['nuclei_potential_doublet', 'nuclei_major_axis_too_long', 'puncta_out_of_bounds']
+    puncta.set_index(index_cols, inplace=True)
+    puncta['num_clean_puncta_in_nucleus'] = (puncta
+        .loc[(puncta[qc_flags].any(axis=1)==False)]
+        .groupby(index_cols)['puncta_object_number']
+        .count()
+    )
+    puncta['num_clean_puncta_in_nucleus'] = puncta['num_clean_puncta_in_nucleus'].fillna(0).astype(int)
+    puncta.reset_index(inplace=True)
+
+    puncta['high_background_puncta'] = (puncta['num_clean_puncta_in_nucleus'] > 70)
+
+    # generate fill_alpha (for plotting only)
+    # (intensity-min_intensity) / (max_intensity-min_intensity) * (1-0.7) + 0.7
+    puncta['fill_alpha'] = (puncta['mean_intensity']-puncta['mean_intensity'].min()) / (
+        puncta['mean_intensity'].max()-puncta['mean_intensity'].min()
+    )*(1-1/np.sqrt(2))+(1/np.sqrt(2))  # rescale to half the intensity ~1/np.sqrt(2) at the lowest brightness
+    
     return puncta
