@@ -22,8 +22,8 @@ import pandas as pd
 import diptest
 
 from puncta_counter.src.preprocessing import preprocess_df, reassign_puncta_to_nuclei, compute_puncta_metrics
-from puncta_counter.src.summarize import (generate_circle, generate_ellipse, two_pass_confidence_ellipse, 
-                                          compute_mahalanobis_distances,
+from puncta_counter.src.summarize import (generate_ellipse, two_pass_confidence_ellipse, 
+                                          compute_mahalanobis_distances, compute_diptest, cluster_doublets,
                                           plot_nuclei_circles_puncta, plot_nuclei_ellipses_puncta)
 from puncta_counter.utils.common import dirname_n_times, expand_dataframe, collapse_dataframe
 from puncta_counter.utils.plotting import save_plot_as_png
@@ -170,78 +170,61 @@ def main(args=None):
         nuclei_subset.to_csv('data/nuclei_subset.csv', index=None)
 
 
-    # Ellipse algos require collapsed dataframe
+    # ellipse algos require collapsed dataframe
     puncta_short = collapse_dataframe(
         puncta_subset.rename(
             columns={'center_x': 'center_x_puncta',
                      'center_y': 'center_y_puncta'}),
         index_cols=['image_number', 'nuclei_object_number'],
-        value_cols=['parent_manual_nuclei', 'puncta_object_number',  # we need these to map the ellipse back to the original data
-                    'center_x_puncta', 'center_y_puncta', 'integrated_intensity']
+        value_cols=[
+            'parent_manual_nuclei', 'puncta_object_number',  # required map back to puncta_subset
+            'center_x_puncta', 'center_y_puncta', 'integrated_intensity']
     )
 
 
     # ----------------------------------------------------------------------
-    # Confidence Ellipse
+    # Generate Confidence Ellipse
 
 
     logger.info(f"Generating confidence ellipses...")
 
     ellipses = two_pass_confidence_ellipse(puncta_short)  # generate ellipses
+    ellipses = compute_diptest(ellipses)
+
+
+    # Doublet Detection
+    if (ellipses['puncta_doublet']==True).any():
+
+        # Only 
+        index_cols = ['image_number', 'nuclei_object_number']
+        metric_cols = [
+            'parent_manual_nuclei', 'puncta_object_number',
+            'center_x_puncta', 'center_y_puncta',
+            'center_puncta_first_pass', 'integrated_intensity',
+            'center_x_second_pass', 'center_y_second_pass',
+            'major_axis_length_second_pass', 'orientation_second_pass',
+        ]
+        doublets = ellipses.loc[(ellipses['puncta_doublet']==True), index_cols+metric_cols]
+        # need [[0, 1], [2, 3], [4, 5]], not [[0, 2, 4], [1, 3, 5]]
+        doublets['center_puncta_first_pass'] = doublets['center_puncta_first_pass'].apply(np.transpose)
+        
+        # Run Kmeans to split the doublets
+        singlets = cluster_doublets(doublets)
+        singlets = two_pass_confidence_ellipse(singlets)  # rerun confidence ellipse algo on singlets
+        singlets = compute_diptest(singlets)  # in the future, if you want to make this recursive
+
+        # merge back to original data
+        ellipses = pd.concat([ellipses[(ellipses['puncta_doublet']==False)], singlets])
 
     if args.save:
         # fix this later
         # for col in two_pass_ellipse_cols:
         #     puncta_short[col] = puncta_short[col].apply(json.dumps)
-        ellipses.to_csv('data/confidence_ellipse_test.csv', index=None)
-
-    # ----------------------------------------------------------------------
-    # Puncta Doublet Detection
-
-    # ellipses['mahalanobis_x'] = ellipses['mahalanobis_coordinates_second_pass'].apply(lambda x: x[0])
-    # ellipses.rename(columns={
-    #     'major_axis_length_second_pass': 'major_axis_length',
-    #     'minor_axis_length_second_pass': 'minor_axis_length'
-    # }, inplace=True)
-
-    # 'minor_axis_length', 'center_y', 'major_axis_length', 'orientation', 'center_x'
-
-
-    # ellipses['num_puncta'] = ellipses['mahalanobis_x'].apply(len)
-    # ellipses['eccentricity'] = np.sqrt(1-(ellipses['minor_axis_length']/ellipses['major_axis_length'])**2)
-
-    # ellipses['dip'] = ellipses['mahalanobis_x'].apply(
-    #     lambda x: diptest.diptest(np.array(x)) if len(x) > 3 else (np.nan, np.nan)  # diptest is invalid for three points
-    # )
-    # ellipses['diptest_dip'] = ellipses['dip'].apply(lambda x: x[0])
-    # ellipses['diptest_pval'] = ellipses['dip'].apply(lambda x: x[1])
-
-    # ellipses['puncta_doublet'] = (
-    #     (ellipses['num_puncta'] > 3) &  # diptest is invalid for three points
-    #     (ellipses['eccentricity'] > np.sqrt(1-1/2**2)) &  # major_axis_length at least 2x the minor_axis_length
-    #     (ellipses['major_axis_length'] > 54) &   # the min minor_axis_length
-    #     (ellipses['diptest_dip'] < 0.1) &  # note: the dip statistic is at least 0.5/n, where n is the number of items
-    #     (ellipses['diptest_pval'] < 0.25)  # less than 25% confident that the distribution is univariate
-    # )
-
-    # # find a better way to do this...
-    # ellipses['center_x'] = ellipses['mean_center_x']
-    # ellipses['center_y'] = ellipses['mean_center_y']
-
-    # # Save
-    # if args.save:
-    #     # ellipses_first_pass[
-    #     #     ['image_number', 'nuclei_object_number'] + ellipse_cols + ['mahalanobis_outlier']
-    #     # ].to_csv('data/troubleshooting/confidence_ellipses_first_pass.csv', index=None)
-    #     ellipses[
-    #         ['image_number', 'nuclei_object_number'] +
-    #         ellipse_cols + 
-    #         ['eccentricity', 'diptest_dip', 'diptest_pval', 'puncta_doublet']
-    #     ].to_csv('data/confidence_ellipse.csv', index=None)
+        ellipses.to_csv('data/confidence_ellipse.csv', index=None)
 
 
     # ----------------------------------------------------------------------
-    # Plot Confidence Ellipses
+    # Plot
 
     filename_for_image_number = dict(zip(nuclei_subset['image_number'], nuclei_subset['file_name_tif']))
     ellipses.rename(columns=dict(zip([f'{col}_second_pass' for col in ellipse_cols], ellipse_cols)), inplace=True)

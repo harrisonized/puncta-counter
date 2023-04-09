@@ -1,4 +1,5 @@
 import numpy as np
+from sklearn.cluster import KMeans
 
 # Functions
 # # find_nearest_point
@@ -30,6 +31,11 @@ def two_cluster_kmeans(centers, left=[0, 0], right=[1, 1], random_state=37):
     """Wrapper around kmeans so it can return both labels_ and cluster_centers_ in one operation
     See: https://scikit-learn.org/stable/modules/generated/sklearn.cluster.KMeans.html
     """
+
+    if centers.shape[0]==2:
+        # need a list of coordinates
+        # ie. [[0, 1], [2, 3], [4, 5]], [[0, 2, 4], [1, 3, 5]]
+        centers = np.transpose(centers)
     
     kmeans = KMeans(
         n_clusters=2, n_init=1, random_state=37,

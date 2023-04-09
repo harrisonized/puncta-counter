@@ -1,8 +1,11 @@
+from functools import reduce
 import numpy as np
 import pandas as pd
 from scipy.stats import t
+import diptest
 
 from puncta_counter.utils.common import flatten_columns, expand_dataframe, collapse_dataframe
+from puncta_counter.utils.clustering_algos import two_cluster_kmeans
 from puncta_counter.utils.ellipse_algos import (confidence_ellipse, min_vol_ellipse,
 	                                            mahalanobis_transform, compute_euclidean_distance_from_origin)
 from puncta_counter.utils.plotting import (plot_circle_using_bokeh,
@@ -11,10 +14,10 @@ from puncta_counter.etc.columns import ellipse_cols
 
 
 # Functions
+# # compute_mahalanobis_distances
 # # generate_ellipse
 # # two_pass_confidence_ellipse
-# # generate_circle
-# # compute_mahalanobis_distances
+# # compute_diptest
 # # plot_nuclei_ellipses_puncta
 # # plot_nuclei_circles_puncta
 
@@ -22,117 +25,7 @@ from puncta_counter.etc.columns import ellipse_cols
 # # ellipse_cols = ["center_x", "center_y", "major_axis_length", "minor_axis_length", "orientation"]
 
 
-def generate_ellipse(
-        puncta,  # note: This must be a COLLAPSED ellipse!
-        algo='confidence_ellipse',
-        aweights=None,
-        n_std=1,
-        mahalanobis_threshold = 1.5,
-        suffix='',
-        # tolerance=0.01  # algo='min_vol_ellipse'
-    ):
-    """Generates an ellipse, which comes with the following dimensions:
-    ["center_x",
-     "center_y",
-     "minor_axis_length",
-     "major_axis_length",
-     "orientation"]
-    """
-
-    if algo == 'min_vol_ellipse':
-        ellipses[ellipse_cols] = pd.DataFrame(
-            ellipses["centers"]
-            .apply(lambda x: min_vol_ellipse(x, tolerance=tolerance))
-            .to_list()
-        )
-
-    elif algo == 'confidence_ellipse':
-        cols = [f'{col}{suffix}' for col in ellipse_cols]
-        ellipse_args = [f'{col}{suffix}' for col
-                        in ['center_puncta', 'major_axis_length', 'minor_axis_length', 'orientation']]
-        
-        ellipses = pd.DataFrame(
-            puncta
-            .apply(lambda x: confidence_ellipse(
-                x[f'center_puncta{suffix}'],
-                aweights=aweights if aweights is None else x[aweights],
-                n_std=n_std
-            ), axis=1)
-            .to_list(), columns=cols
-        )
-        puncta[cols] = ellipses  # add to input object
-
-        # mahalanobis transform
-        puncta[f'mahalanobis_coordinates{suffix}'] = puncta[ellipse_args].apply(
-            lambda x: mahalanobis_transform(*x), axis=1)
-        puncta[f'mahalanobis_distances{suffix}'] = puncta[f'mahalanobis_coordinates{suffix}'].apply(
-            compute_euclidean_distance_from_origin)
-        puncta[f'is_mahalanobis_outlier{suffix}'] = puncta[f'mahalanobis_distances{suffix}'].apply(
-            lambda x: np.array(x >= mahalanobis_threshold))
-        
-    else:
-        raise ValueError("Choose one: ['min_vol_ellipse', 'confidence_ellipse']")
-
-    return puncta
-
-
-def two_pass_confidence_ellipse(puncta_short):
-
-    # first pass ellipse
-    puncta_short[f'center_puncta_first_pass'] = puncta_short[
-        ['center_x_puncta', 'center_y_puncta']
-    ].apply(lambda x: np.array(list(x)), axis=1)
-    puncta_short = generate_ellipse(puncta_short, suffix='_first_pass')
-
-    # second pass ellipse
-    for col in ['parent_manual_nuclei', 'puncta_object_number',
-                'center_x_puncta', 'center_y_puncta', 'integrated_intensity']:
-        puncta_short[col] = puncta_short[col].apply(np.array)
-        puncta_short[f'{col}_second_pass'] = puncta_short[
-            [col, 'is_mahalanobis_outlier_first_pass']
-        ].apply(lambda x: x[0][~x[1]], axis=1)
-
-    puncta_short['center_puncta_second_pass'] = puncta_short[
-        ['center_x_puncta_second_pass', 'center_y_puncta_second_pass']
-    ].apply(lambda x: np.array(list(x)), axis=1)
-    puncta_short = generate_ellipse(puncta_short, aweights='integrated_intensity_second_pass', n_std=2, suffix='_second_pass')
-
-    return puncta_short
-
-
-def generate_circle(puncta):
-    """Generates an "effective radius" by assuming that the standard deviations in each dimension are uncorrelated
-    This was a first pass used to build plotting capabilities
-    This algorithm should be deprecated, as it is highly sensitive to outliers
-    """
-
-    circles = puncta.groupby(["image_number", "nuclei_object_number"]).agg(
-        {
-            "area": [sum, "count"],
-            "integrated_intensity": sum,
-            "center_x": [np.mean, np.std],
-            "center_y": [np.mean, np.std],
-        }
-    ).reset_index()
-    circles.columns = flatten_columns(circles.columns)
-
-    # derive effective radius
-    circles["center_std"] = np.sqrt(circles["center_x_std"]**2+circles["center_y_std"]**2)
-    circles["effective_radius_puncta"] = circles["center_std"].apply(lambda x: x*t.ppf(0.90, 2))  # 90% CI
-
-    # fillna
-    circles.loc[circles["effective_radius_puncta"].isna(), "effective_radius_puncta"
-    ] = circles.loc[circles["effective_radius_puncta"].isna(), "area_sum"].apply(
-        lambda x: np.sqrt(x/np.pi)
-    )
-    circles["bounding_box_min_x"] = circles["center_x_mean"] - circles["effective_radius_puncta"]
-    circles["bounding_box_max_x"] = circles["center_x_mean"] + circles["effective_radius_puncta"]
-    circles["bounding_box_min_y"] = circles["center_y_mean"] - circles["effective_radius_puncta"]
-    circles["bounding_box_max_y"] = circles["center_y_mean"] + circles["effective_radius_puncta"]
-
-    return circles
-
-
+# might deprecate
 def compute_mahalanobis_distances(ellipses, explode=True):
     
     # center, rotate, and rescale the coordinates of the puncta (centers)
@@ -162,6 +55,219 @@ def compute_mahalanobis_distances(ellipses, explode=True):
         )
         
     return ellipses
+
+
+def generate_ellipse(
+        puncta,  # note: This must be a COLLAPSED ellipse!
+        algo='confidence_ellipse',
+        aweights=None,
+        n_std=1,
+        mahalanobis_threshold = 1.5,
+        suffix='',
+        # tolerance=0.01  # algo='min_vol_ellipse'
+    ):
+    """Generates an ellipse, which comes with the following dimensions:
+    ["center_x",
+     "center_y",
+     "minor_axis_length",
+     "major_axis_length",
+     "orientation"]
+    """
+
+    if algo == 'min_vol_ellipse':
+        # the simpleest algorithm
+        ellipses[ellipse_cols] = pd.DataFrame(
+            ellipses["centers"]
+            .apply(lambda x: min_vol_ellipse(x, tolerance=tolerance))
+            .to_list()
+        )
+
+    elif algo == 'confidence_ellipse':
+        # The bread-and-butter of this pipeline
+
+        # compute confidence ellipse
+        cols = [f'{col}{suffix}' for col in ellipse_cols]
+        puncta['confidence_ellipse'] = (
+            puncta.apply(
+                lambda x: confidence_ellipse(
+                    x[f'center_puncta{suffix}'],
+                    aweights=aweights if aweights is None else x[aweights],
+                    n_std=n_std), axis=1)
+        )
+        for idx, col in enumerate(cols):
+            puncta[col] = puncta['confidence_ellipse'].apply(lambda x: x[idx])
+        puncta.drop(columns=['confidence_ellipse'], inplace=True)
+
+        # compute ellipse metrics
+        puncta[f'num_puncta{suffix}'] = puncta[f'center_puncta{suffix}'].apply(lambda x: x.shape[1])
+        puncta[f'eccentricity{suffix}'] = np.sqrt(
+            1-(puncta[f'minor_axis_length{suffix}']/puncta[f'major_axis_length{suffix}'])**2
+        )
+
+        # mahalanobis transform
+        # center, rotate, and rescale the coordinates of the puncta (centers)
+        # such that the x-axis is major_axis and the y-axis is the minor_axis
+        ellipse_args = [
+            f'{col}{suffix}' for col in
+            ['center_puncta', 'major_axis_length', 'minor_axis_length', 'orientation']
+        ]
+        puncta[f'mahalanobis_coordinates{suffix}'] = puncta[ellipse_args].apply(
+            lambda x: mahalanobis_transform(*x), axis=1)
+        puncta[f'mahalanobis_distances{suffix}'] = puncta[f'mahalanobis_coordinates{suffix}'].apply(
+            compute_euclidean_distance_from_origin)
+        puncta[f'is_mahalanobis_outlier{suffix}'] = puncta[f'mahalanobis_distances{suffix}'].apply(
+            lambda x: np.array(x >= mahalanobis_threshold))
+        puncta[f'any_mahalanobis_outlier{suffix}'] = puncta[f'is_mahalanobis_outlier{suffix}'].apply(
+            lambda x: np.any(x==True)
+        )
+
+    elif algo=='circle':
+        """Generates an "effective radius" by assuming that the standard deviations in each dimension are uncorrelated
+        This was a first pass used to build plotting capabilities
+        This algorithm should be deprecated, as it is highly sensitive to outliers
+        """
+        circles = puncta.groupby(["image_number", "nuclei_object_number"]).agg(
+            {
+                "area": [sum, "count"],
+                "integrated_intensity": sum,
+                "center_x": [np.mean, np.std],
+                "center_y": [np.mean, np.std],
+            }
+        ).reset_index()
+        circles.columns = flatten_columns(circles.columns)
+
+        # derive effective radius
+        circles["center_std"] = np.sqrt(circles["center_x_std"]**2+circles["center_y_std"]**2)
+        circles["effective_radius_puncta"] = circles["center_std"].apply(lambda x: x*t.ppf(0.90, 2))  # 90% CI
+
+        # fillna
+        circles.loc[circles["effective_radius_puncta"].isna(), "effective_radius_puncta"
+        ] = circles.loc[circles["effective_radius_puncta"].isna(), "area_sum"].apply(
+            lambda x: np.sqrt(x/np.pi)
+        )
+        circles["bounding_box_min_x"] = circles["center_x_mean"] - circles["effective_radius_puncta"]
+        circles["bounding_box_max_x"] = circles["center_x_mean"] + circles["effective_radius_puncta"]
+        circles["bounding_box_min_y"] = circles["center_y_mean"] - circles["effective_radius_puncta"]
+        circles["bounding_box_max_y"] = circles["center_y_mean"] + circles["effective_radius_puncta"]
+
+        return circles
+
+    else:
+        raise ValueError("Choose one: ['min_vol_ellipse', 'confidence_ellipse', 'circle']")
+
+    return puncta
+
+
+def two_pass_confidence_ellipse(puncta_short):
+    """Required columns: center_x_puncta
+    """
+
+    # first pass ellipse
+    puncta_short[f'center_puncta_first_pass'] = puncta_short[
+        ['center_x_puncta', 'center_y_puncta']
+    ].apply(lambda x: x if isinstance(x, np.ndarray) else np.array(list(x)), axis=1)
+    puncta_short = generate_ellipse(
+        puncta_short,
+        suffix='_first_pass'
+    )
+
+    # filter mahalanobis_outliers from first pass
+    cols = ['parent_manual_nuclei', 'puncta_object_number',
+            'center_x_puncta', 'center_y_puncta', 'integrated_intensity']
+    for col in cols:
+        puncta_short[col] = puncta_short[col].apply(np.array)
+        puncta_short[f'{col}_second_pass'] = puncta_short[
+            [col, 'is_mahalanobis_outlier_first_pass']
+        ].apply(lambda x: x[0][~x[1]], axis=1)
+
+    # second pass ellipse
+    puncta_short['center_puncta_second_pass'] = puncta_short[
+        ['center_x_puncta_second_pass', 'center_y_puncta_second_pass']
+    ].apply(lambda x: x if isinstance(x, np.ndarray) else np.array(list(x)), axis=1)
+    puncta_short = generate_ellipse(
+        puncta_short,
+        aweights='integrated_intensity_second_pass',
+        n_std=2,
+        suffix='_second_pass'
+    )
+
+    return puncta_short
+
+
+def compute_diptest(
+        ellipses,
+        eccentricity_col='eccentricity_second_pass',
+        major_axis_length_col='major_axis_length_second_pass',
+        minor_axis_length_col='minor_axis_length_second_pass',
+        mahalanobis_coordinates_col='mahalanobis_coordinates_second_pass',
+    ):
+    
+    # get relevant x coordinate
+    ellipses['diptest_mahalanobis_x'] = ellipses[mahalanobis_coordinates_col].apply(lambda x: x[0])
+    
+    # comute diptest
+    ellipses['dip'] = ellipses['diptest_mahalanobis_x'].apply(
+        lambda x: diptest.diptest(np.array(x)) if len(x) > 3 else (np.nan, np.nan)
+    )
+    ellipses['diptest_dip'] = ellipses['dip'].apply(lambda x: x[0])
+    ellipses['diptest_pval'] = ellipses['dip'].apply(lambda x: x[1])
+    ellipses.drop(columns=['dip'], inplace=True)
+    
+    # compute filter
+    ellipses['puncta_doublet'] = (
+        (ellipses[eccentricity_col] > np.sqrt(1-1/2**2)) &  # major_axis_length at least 2x the minor_axis_length
+        (ellipses[major_axis_length_col] > 54) &   # the min minor_axis_length
+        (ellipses['diptest_dip'] < 0.1) &  # note: the dip statistic is at least 0.5/n, where n is the number of items
+        (ellipses['diptest_pval'] < 0.25)  # less than 25% confident that the distribution is univariate
+    )
+    
+    return ellipses
+
+
+def cluster_doublets(doublets):
+    """Currently, as we do not expect to run MEFs through the pipeline,
+    the input should be the minority of the data.
+    
+    Uses KMeans from sklearn
+    See: https://scikit-learn.org/stable/modules/generated/sklearn.cluster.KMeans.html
+    """
+
+    # compute centroids for initializing k means
+    for i, side in enumerate(['left', 'right']):
+        if side=='left':
+            func = lambda x: [(x[0]-(x[2]*np.sin(x[3]/180*np.pi)/4)), (x[1]-(x[2]*np.cos(x[3]/180*np.pi)/4))]
+        else:
+            func = lambda x: [(x[0]+(x[2]*np.sin(x[3]/180*np.pi)/4)), (x[1]+(x[2]*np.cos(x[3]/180*np.pi)/4))]
+        params = ["center_x_second_pass", "center_y_second_pass",
+                  "major_axis_length_second_pass", "orientation_second_pass"]
+        doublets[f'{side}_centroid'] = doublets[params].apply(func, axis=1)
+
+    
+    # Peform the K-Means Clustering
+    doublets.loc[:, ['cluster_label', 'kmeans_centroids']] = np.array(
+        doublets[['center_puncta_first_pass', 'left_centroid', 'right_centroid']].apply(
+        lambda x: two_cluster_kmeans(x['center_puncta_first_pass'], x['left_centroid'], x['right_centroid']),
+        axis=1
+    ).to_list(), dtype=object)
+
+    # construct final output array
+    list_cols = ['parent_manual_nuclei', 'puncta_object_number', 'center_x_puncta', 'center_y_puncta', 'integrated_intensity']
+    singlets = doublets[
+        ['image_number', 'nuclei_object_number']  # index cols
+        + list_cols
+        + ['kmeans_centroids', 'cluster_label']  # kmeans outputs
+    ].copy()
+    singlets['cluster_id'] = [[0, 1] for i in range(len(doublets))]
+    singlets = singlets.explode('cluster_id')  # duplicate rows
+
+    # grab only the items for the row
+    singlets['kmeans_centroids'] = singlets[['kmeans_centroids', 'cluster_id']].apply(lambda x: x[0][x[1]], axis=1)
+    for metric in ['parent_manual_nuclei', 'puncta_object_number', 'integrated_intensity', 'center_x_puncta', 'center_y_puncta']:
+        singlets[metric] = singlets[[metric, 'cluster_label', 'cluster_id']].apply(
+            lambda x: x[metric][x['cluster_label']==x['cluster_id']], axis=1)
+    singlets.drop(columns=['cluster_label'], inplace=True)
+    
+    return singlets
 
 
 def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
