@@ -9,6 +9,8 @@ from puncta_counter.utils.common import collapse_dataframe, expand_dataframe
 # Functions
 # # preprocess_df
 # # reassign_puncta_to_nuclei
+# # compute_puncta_metrics
+# # merge_exclusion_list
 
 
 def preprocess_df(df, columns):
@@ -118,3 +120,16 @@ def compute_puncta_metrics(puncta):
     )*(1-1/np.sqrt(2))+(1/np.sqrt(2))  # rescale to half the intensity ~1/np.sqrt(2) at the lowest brightness
     
     return puncta
+
+
+def merge_exclusion_list(df, exclusion_list):
+    """Convenience function, because you cannot set a dataframe from a for loop
+    """
+    index_cols = ['image_number', 'nuclei_object_number']
+    df = pd.merge(
+        df, exclusion_list[index_cols+['manually_exclude']],
+        left_on=index_cols, right_on=index_cols, how='left'
+    )
+    df['manually_exclude'].fillna(False, inplace=True)
+    
+    return df

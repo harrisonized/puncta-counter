@@ -19,7 +19,6 @@ from puncta_counter.etc.columns import ellipse_cols
 # # two_pass_confidence_ellipse
 # # compute_diptest
 # # plot_nuclei_ellipses_puncta
-# # plot_nuclei_circles_puncta
 
 # Note
 # # ellipse_cols = ["center_x", "center_y", "major_axis_length", "minor_axis_length", "orientation"]
@@ -270,7 +269,7 @@ def cluster_doublets(doublets):
     return singlets
 
 
-def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
+def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None, is_circle=False):
     """Construct a resemblance of the original image from the extracted features
     """
 
@@ -290,81 +289,43 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None):
         fill_color='#000fff',  # blue
     )
 
-    # confidence_ellipse
-    # may need to redo this...
-    ellipses_data = ellipses[["nuclei_object_number"]+ellipse_cols]
-    plot = plot_ellipse_using_bokeh(
-        ellipses_data,
-        ellipses_data,
-        x='center_x',
-        y='center_y',
-        height="major_axis_length",
-        width="minor_axis_length",
-        angle="orientation",
-        angle_units='deg',
-        text="nuclei_object_number",
-        text_color='orange',
-        fill_color='#097969',  # green
-        fill_alpha=0.9,
-        line_alpha=0,
-        plot=plot
-    )
+    if is_circle:
 
-    # puncta
-    puncta_data = puncta[["nuclei_object_number"] + ellipse_cols + ["fill_alpha"]]
-    plot = plot_ellipse_using_bokeh(
-        puncta_data,
-        x='center_x',
-        y='center_y',
-        height="major_axis_length",
-        width="minor_axis_length",
-        angle="orientation",
-        angle_units='deg',
-        fill_color='#ff2b00',  # red
-        fill_alpha='fill_alpha',
-        line_alpha=0,
-        plot=plot
-    )
+        circles_data = ellipses[
+            ["nuclei_object_number", "center_x_mean", "center_y_mean", "effective_radius_puncta"]
+        ]
+        plot = plot_circle_using_bokeh(
+            circles_data,
+            circles_data,
+            x='center_x_mean',
+            y='center_y_mean',
+            size="effective_radius_puncta",
+            text="nuclei_object_number",
+            text_color='orange',
+            fill_color='#097969',  # green
+            line_alpha=0,
+            plot=plot
+        )
 
-    return plot
-
-
-def plot_nuclei_circles_puncta(nuclei, circles, puncta, title=None):
-    """Construct a resemblance of the original image from the extracted features
-    """
-
-    # nuclei
-    nuclei_data = nuclei[["nuclei_object_number"] + ellipse_cols]
-    plot = plot_ellipse_using_bokeh(
-        nuclei_data,
-        nuclei_data,
-        x='center_x',
-        y='center_y',
-        height="major_axis_length",
-        width="minor_axis_length",
-        angle="orientation",
-        angle_units='deg',
-        text="nuclei_object_number",
-        title=title,
-        fill_color='#000fff',  # blue
-    )
-
-    # circle
-    circles_data = circles[
-        ["nuclei_object_number", "center_x_mean", "center_y_mean", "effective_radius_puncta"]
-    ]
-    plot = plot_circle_using_bokeh(
-        circles_data,
-        circles_data,
-        x='center_x_mean',
-        y='center_y_mean',
-        size="effective_radius_puncta",
-        text="nuclei_object_number",
-        text_color='orange',
-        fill_color='#097969',  # green
-        line_alpha=0,
-        plot=plot
-    )
+    else:
+        # confidence_ellipse
+        ellipses_data = ellipses[["nuclei_object_number"]+ellipse_cols]
+        plot = plot_ellipse_using_bokeh(
+            ellipses_data,
+            ellipses_data,
+            x='center_x',
+            y='center_y',
+            height="major_axis_length",
+            width="minor_axis_length",
+            angle="orientation",
+            angle_units='deg',
+            text="nuclei_object_number",
+            text_color='orange',
+            fill_color='#097969',  # green
+            fill_alpha=0.9,
+            line_alpha=0,
+            plot=plot
+        )
 
     # puncta
     puncta_data = puncta[["nuclei_object_number"] + ellipse_cols + ["fill_alpha"]]

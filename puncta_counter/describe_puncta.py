@@ -21,14 +21,14 @@ import numpy as np
 import pandas as pd
 import diptest
 
-from puncta_counter.src.preprocessing import preprocess_df, reassign_puncta_to_nuclei, compute_puncta_metrics
+from puncta_counter.src.preprocessing import (preprocess_df, reassign_puncta_to_nuclei,
+                                              compute_puncta_metrics, merge_exclusion_list)
 from puncta_counter.src.summarize import (generate_ellipse, two_pass_confidence_ellipse, 
-                                          compute_mahalanobis_distances, compute_diptest, cluster_doublets,
-                                          plot_nuclei_circles_puncta, plot_nuclei_ellipses_puncta)
-from puncta_counter.utils.common import dirname_n_times, expand_dataframe, collapse_dataframe
+                                          compute_diptest, cluster_doublets, plot_nuclei_ellipses_puncta)
+from puncta_counter.utils.common import dirname_n_times, dataframe_from_json, collapse_dataframe
 from puncta_counter.utils.plotting import save_plot_as_png
 from puncta_counter.utils.logger import configure_logger
-from puncta_counter.etc.columns import ellipse_cols, nuclei_cols, puncta_cols, two_pass_ellipse_list_cols
+from puncta_counter.etc.columns import nuclei_cols, puncta_cols, ellipse_cols
 
 script_name = 'run_puncta_counter'
 this_dir = os.path.realpath(ospj(os.getcwd(), os.path.dirname(__file__)))
@@ -51,6 +51,8 @@ def parse_args(args=None):
                         required=False, help="output directory")
     parser.add_argument("-s", "--save", dest="save", default=False, action="store_true",
                         required=False, help="turn this on to output the intermediate csv files")
+    parser.add_argument("-f", "--filter", dest="filter_file", default='config/exclusion_list.json', action="store",
+                        required=False, help="json for filtering before final analysis")
 
     parser.add_argument("-a", "--algos", dest="algos", nargs='+',
                         default=['confidence_ellipse',
@@ -185,7 +187,6 @@ def main(args=None):
     # ----------------------------------------------------------------------
     # Generate Confidence Ellipse
 
-
     logger.info(f"Generating confidence ellipses...")
 
     ellipses = two_pass_confidence_ellipse(puncta_short)  # generate ellipses
@@ -194,6 +195,8 @@ def main(args=None):
 
     # Doublet Detection
     if (ellipses['puncta_doublet']==True).any():
+
+        logger.info(f"Clustering doublets...")
 
         # Only 
         index_cols = ['image_number', 'nuclei_object_number']
@@ -215,6 +218,7 @@ def main(args=None):
 
         # merge back to original data
         ellipses = pd.concat([ellipses[(ellipses['puncta_doublet']==False)], singlets])
+        ellipses['cluster_id'].fillna(0, inplace=True)
 
     if args.save:
         # fix this later
@@ -224,12 +228,47 @@ def main(args=None):
 
 
     # ----------------------------------------------------------------------
+    # Manual Filtering
+
+    image_number_for_filename = dict(
+        zip(nuclei_subset['file_name_tif'].apply(lambda x: os.path.splitext(x)[0]),
+            nuclei_subset['image_number'])
+    )
+
+    if os.path.isfile(args.filter_file):
+
+        logger.info(f"Manually filtering data...")
+
+        # read data
+        with open(args.filter_file, "r") as f:
+            exclusion_list_json = json.load(f)
+
+        # Construct exclusion list dataframe
+        exclusion_list = dataframe_from_json(exclusion_list_json, colnames=['filename', 'nuclei_object_number'])
+        exclusion_list['image_number'] = (
+            exclusion_list['filename']
+            .apply(lambda x: os.path.splitext(x)[0])
+            .apply(lambda x: image_number_for_filename.get(x))
+        )
+        exclusion_list['manually_exclude'] = True
+
+        # filter
+        nuclei_subset = merge_exclusion_list(nuclei_subset, exclusion_list)
+        nuclei_subset = nuclei_subset[(nuclei_subset['manually_exclude']==False)].copy()
+        ellipses = merge_exclusion_list(ellipses, exclusion_list)
+        ellipses = ellipses[(ellipses['manually_exclude']==False)].copy()
+        puncta_subset = merge_exclusion_list(puncta_subset, exclusion_list)
+        puncta_subset = puncta_subset[(puncta_subset['manually_exclude']==False)].copy()
+
+
+    # ----------------------------------------------------------------------
     # Plot
+
+    logger.info(f"Plotting...")
 
     filename_for_image_number = dict(zip(nuclei_subset['image_number'], nuclei_subset['file_name_tif']))
     ellipses.rename(columns=dict(zip([f'{col}_second_pass' for col in ellipse_cols], ellipse_cols)), inplace=True)
 
-    logger.info(f"Plotting...")
     for image_number in tqdm(nuclei_subset['image_number'].unique()):
         title = filename_for_image_number[image_number].split('.')[0]
 
@@ -237,7 +276,7 @@ def main(args=None):
             nuclei=nuclei_subset.loc[(nuclei_subset['image_number']==image_number)],
             ellipses=ellipses.loc[(ellipses['image_number']==image_number)],
             puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
-            title=title
+            title=title,
         )
         save_plot_as_png(plot, f"figures/confidence_ellipse/{title}.png")
 
@@ -262,7 +301,7 @@ def main(args=None):
                 nuclei=nuclei_subset.loc[(nuclei_subset['image_number']==image_number)],
                 ellipses=ellipses.loc[(ellipses['image_number']==image_number)],
                 puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
-                title=title
+                title=title,
             )
 
             save_plot_as_png(plot, f"figures/min_vol_ellipse/{title}.png")
@@ -274,7 +313,7 @@ def main(args=None):
     if 'circle' in args.algos:
 
         logger.info(f"Generating gaussian circles...")
-        circles = generate_circle(puncta_subset)
+        circles = generate_ellipse(puncta_subset, algo='circle')
         if args.save:
             circles[['image_number', "nuclei_object_number",
                      "center_x_mean", "center_y_mean",
@@ -283,11 +322,12 @@ def main(args=None):
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
             title = filename_for_image_number[image_number].split('.')[0]
 
-            plot = plot_nuclei_circles_puncta(
+            plot = plot_nuclei_ellipses_puncta(
                 nuclei=nuclei_subset.loc[(nuclei_subset['image_number']==image_number)],
-                circles=circles.loc[(circles['image_number']==image_number)],
+                ellipses=ellipses.loc[(ellipses['image_number']==image_number)],
                 puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
-                title=title
+                title=title,
+                is_circle=True
             )
 
             save_plot_as_png(plot, f"figures/circle/{title}.png")
