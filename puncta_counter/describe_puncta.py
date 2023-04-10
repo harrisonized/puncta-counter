@@ -12,6 +12,7 @@
 
 import os
 from os.path import join as ospj
+import warnings
 from tqdm import tqdm
 import argparse
 import logging
@@ -35,6 +36,9 @@ this_dir = os.path.realpath(ospj(os.getcwd(), os.path.dirname(__file__)))
 base_dir = dirname_n_times(this_dir, 1)
 os.chdir(base_dir)
 
+warnings.filterwarnings("ignore", message="Mean of empty slice.")
+warnings.filterwarnings("ignore", message="invalid value encountered in double_scalars")
+
 
 # Functions
 # # parse_args
@@ -57,7 +61,7 @@ def parse_args(args=None):
     parser.add_argument("-a", "--algos", dest="algos", nargs='+',
                         default=['confidence_ellipse',
                                  # 'min_vol_ellipse',
-                                 # 'circle',  # deprecated
+                                 # 'circle',
                                 ],
                         action="store", required=False, help="limit scope for testing")
 
@@ -144,7 +148,6 @@ def main(args=None):
 
 
     # Split Puncta Data
-
     qc_cols = ['nuclei_potential_doublet', 'nuclei_major_axis_too_long', 'puncta_out_of_bounds', 'high_background_puncta']
     puncta_failed_qc = puncta[qc_cols].any(axis=1)
     problem_puncta, puncta_subset = puncta[puncta_failed_qc], puncta[~puncta_failed_qc].copy()
@@ -180,18 +183,19 @@ def main(args=None):
         index_cols=['image_number', 'nuclei_object_number'],
         value_cols=[
             'parent_manual_nuclei', 'puncta_object_number',  # required map back to puncta_subset
-            'center_x_puncta', 'center_y_puncta', 'integrated_intensity']
+            'center_x_puncta', 'center_y_puncta',
+            'integrated_intensity', 'area'  # extra metrics go here 
+        ]
     )
 
 
     # ----------------------------------------------------------------------
     # Generate Confidence Ellipse
 
-    logger.info(f"Generating confidence ellipses...")
+    logger.info(f"Generating ellipses...")
 
     ellipses = two_pass_confidence_ellipse(puncta_short)  # generate ellipses
     ellipses = compute_diptest(ellipses)
-
 
     # Doublet Detection
     if (ellipses['puncta_doublet']==True).any():
@@ -264,21 +268,23 @@ def main(args=None):
     # ----------------------------------------------------------------------
     # Plot
 
-    logger.info(f"Plotting...")
-
     filename_for_image_number = dict(zip(nuclei_subset['image_number'], nuclei_subset['file_name_tif']))
-    ellipses.rename(columns=dict(zip([f'{col}_second_pass' for col in ellipse_cols], ellipse_cols)), inplace=True)
 
-    for image_number in tqdm(nuclei_subset['image_number'].unique()):
-        title = filename_for_image_number[image_number].split('.')[0]
+    logger.info(f"Plotting confidence_ellipse...")
 
-        plot = plot_nuclei_ellipses_puncta(
-            nuclei=nuclei_subset.loc[(nuclei_subset['image_number']==image_number)],
-            ellipses=ellipses.loc[(ellipses['image_number']==image_number)],
-            puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
-            title=title,
-        )
-        save_plot_as_png(plot, f"figures/confidence_ellipse/{title}.png")
+    if 'confidence_ellipse' in args.algos:    
+        ellipses.rename(columns=dict(zip([f'{col}_second_pass' for col in ellipse_cols], ellipse_cols)), inplace=True)
+
+        for image_number in tqdm(nuclei_subset['image_number'].unique()):
+            title = filename_for_image_number[image_number].split('.')[0]
+
+            plot = plot_nuclei_ellipses_puncta(
+                nuclei=nuclei_subset.loc[(nuclei_subset['image_number']==image_number)],
+                ellipses=ellipses.loc[(ellipses['image_number']==image_number)],
+                puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
+                title=title,
+            )
+            save_plot_as_png(plot, f"figures/confidence_ellipse/{title}.png")
 
 
     # ----------------------------------------------------------------------
@@ -288,7 +294,10 @@ def main(args=None):
     if 'min_vol_ellipse' in args.algos:
 
         logger.info(f"Generating minimum bounding ellipse...")
-        ellipses = generate_ellipse(puncta_subset, algo='min_vol_ellipse')
+
+        ellipses = generate_ellipse(puncta_short, algo='min_vol_ellipse', suffix='_mve')
+        ellipses.rename(columns=dict(zip([f'{col}_mve' for col in ellipse_cols], ellipse_cols)), inplace=True)
+
         if args.save:
             ellipses[['image_number', 'nuclei_object_number'] + ellipse_cols].to_csv(
                 'data/ellipses/min_vol_ellipse.csv', index=None
@@ -313,18 +322,19 @@ def main(args=None):
     if 'circle' in args.algos:
 
         logger.info(f"Generating gaussian circles...")
-        circles = generate_ellipse(puncta_subset, algo='circle')
+        circles = generate_ellipse(puncta_short, algo='circle', suffix='_circle')
+
         if args.save:
             circles[['image_number', "nuclei_object_number",
                      "center_x_mean", "center_y_mean",
-                     "effective_radius_puncta"]].to_csv('data/ellipses/circles.csv', index=None)
+                     "effective_radius_circle"]].to_csv('data/ellipses/circles.csv', index=None)
 
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
             title = filename_for_image_number[image_number].split('.')[0]
 
             plot = plot_nuclei_ellipses_puncta(
                 nuclei=nuclei_subset.loc[(nuclei_subset['image_number']==image_number)],
-                ellipses=ellipses.loc[(ellipses['image_number']==image_number)],
+                ellipses=circles.loc[(circles['image_number']==image_number)],
                 puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
                 title=title,
                 is_circle=True

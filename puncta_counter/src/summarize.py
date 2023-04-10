@@ -57,15 +57,18 @@ def compute_mahalanobis_distances(ellipses, explode=True):
 
 
 def generate_ellipse(
-        puncta,  # note: This must be a COLLAPSED ellipse!
+        puncta_short,  # note: This must be a COLLAPSED ellipse!
         algo='confidence_ellipse',
+        suffix='',
         aweights=None,
         n_std=1,
         mahalanobis_threshold = 1.5,
-        suffix='',
-        # tolerance=0.01  # algo='min_vol_ellipse'
+        # algo='min_vol_ellipse'
+        tolerance=0.01,
     ):
-    """Generates an ellipse, which comes with the following dimensions:
+    """Requires a condensed dataframe
+
+    Generates an ellipse, which comes with the following dimensions:
     ["center_x",
      "center_y",
      "minor_axis_length",
@@ -73,88 +76,83 @@ def generate_ellipse(
      "orientation"]
     """
 
-    if algo == 'min_vol_ellipse':
-        # the simpleest algorithm
-        ellipses[ellipse_cols] = pd.DataFrame(
-            ellipses["centers"]
-            .apply(lambda x: min_vol_ellipse(x, tolerance=tolerance))
-            .to_list()
-        )
-
-    elif algo == 'confidence_ellipse':
+    if algo == 'confidence_ellipse':
         # The bread-and-butter of this pipeline
 
         # compute confidence ellipse
         cols = [f'{col}{suffix}' for col in ellipse_cols]
-        puncta['confidence_ellipse'] = (
-            puncta.apply(
+        puncta_short['confidence_ellipse'] = (
+            puncta_short.apply(
                 lambda x: confidence_ellipse(
                     x[f'center_puncta{suffix}'],
                     aweights=aweights if aweights is None else x[aweights],
                     n_std=n_std), axis=1)
         )
         for idx, col in enumerate(cols):
-            puncta[col] = puncta['confidence_ellipse'].apply(lambda x: x[idx])
-        puncta.drop(columns=['confidence_ellipse'], inplace=True)
+            puncta_short[col] = puncta_short['confidence_ellipse'].apply(lambda x: x[idx])
+        puncta_short.drop(columns=['confidence_ellipse'], inplace=True)
 
         # compute ellipse metrics
-        puncta[f'num_puncta{suffix}'] = puncta[f'center_puncta{suffix}'].apply(lambda x: x.shape[1])
-        puncta[f'eccentricity{suffix}'] = np.sqrt(
-            1-(puncta[f'minor_axis_length{suffix}']/puncta[f'major_axis_length{suffix}'])**2
+        puncta_short[f'num_puncta{suffix}'] = puncta_short[f'center_puncta{suffix}'].apply(lambda x: x.shape[1])
+        puncta_short[f'eccentricity{suffix}'] = np.sqrt(
+            1-(puncta_short[f'minor_axis_length{suffix}']/puncta_short[f'major_axis_length{suffix}'])**2
         )
 
         # mahalanobis transform
-        # center, rotate, and rescale the coordinates of the puncta (centers)
+        # center, rotate, and rescale the coordinates of the puncta_short (centers)
         # such that the x-axis is major_axis and the y-axis is the minor_axis
         ellipse_args = [
             f'{col}{suffix}' for col in
             ['center_puncta', 'major_axis_length', 'minor_axis_length', 'orientation']
         ]
-        puncta[f'mahalanobis_coordinates{suffix}'] = puncta[ellipse_args].apply(
+        puncta_short[f'mahalanobis_coordinates{suffix}'] = puncta_short[ellipse_args].apply(
             lambda x: mahalanobis_transform(*x), axis=1)
-        puncta[f'mahalanobis_distances{suffix}'] = puncta[f'mahalanobis_coordinates{suffix}'].apply(
+        puncta_short[f'mahalanobis_distances{suffix}'] = puncta_short[f'mahalanobis_coordinates{suffix}'].apply(
             compute_euclidean_distance_from_origin)
-        puncta[f'is_mahalanobis_outlier{suffix}'] = puncta[f'mahalanobis_distances{suffix}'].apply(
+        puncta_short[f'is_mahalanobis_outlier{suffix}'] = puncta_short[f'mahalanobis_distances{suffix}'].apply(
             lambda x: np.array(x >= mahalanobis_threshold))
-        puncta[f'any_mahalanobis_outlier{suffix}'] = puncta[f'is_mahalanobis_outlier{suffix}'].apply(
+        puncta_short[f'any_mahalanobis_outlier{suffix}'] = puncta_short[f'is_mahalanobis_outlier{suffix}'].apply(
             lambda x: np.any(x==True)
         )
+
+    elif algo == 'min_vol_ellipse':
+
+        cols = [f'{col}{suffix}' for col in ellipse_cols]
+        puncta_short['center_puncta'] = puncta_short[['center_x_puncta', 'center_y_puncta']].apply(lambda x: np.array(list(x)), axis=1)
+        puncta_short['min_vol_ellipse'] = puncta_short['center_puncta'].apply(
+            lambda x: min_vol_ellipse(x, tolerance=tolerance)
+        )
+        for idx, col in enumerate(cols):
+            puncta_short[col] = puncta_short['min_vol_ellipse'].apply(lambda x: x[idx])
+        puncta_short.drop(columns=['min_vol_ellipse'], inplace=True)
 
     elif algo=='circle':
         """Generates an "effective radius" by assuming that the standard deviations in each dimension are uncorrelated
         This was a first pass used to build plotting capabilities
         This algorithm should be deprecated, as it is highly sensitive to outliers
         """
-        circles = puncta.groupby(["image_number", "nuclei_object_number"]).agg(
-            {
-                "area": [sum, "count"],
-                "integrated_intensity": sum,
-                "center_x": [np.mean, np.std],
-                "center_y": [np.mean, np.std],
-            }
-        ).reset_index()
-        circles.columns = flatten_columns(circles.columns)
 
+        # compute some metrics
+        puncta_short['total_area'] = puncta_short['area'].apply(lambda x: sum(x))
+        puncta_short['center_x_mean'] = puncta_short['center_x_puncta'].apply(lambda x: np.mean(x))
+        puncta_short['center_y_mean'] = puncta_short['center_y_puncta'].apply(lambda x: np.mean(x))
+        puncta_short['center_x_std'] = puncta_short['center_x_puncta'].apply(lambda x: np.std(x))
+        puncta_short['center_y_std'] = puncta_short['center_y_puncta'].apply(lambda x: np.std(x))
+        
         # derive effective radius
-        circles["center_std"] = np.sqrt(circles["center_x_std"]**2+circles["center_y_std"]**2)
-        circles["effective_radius_puncta"] = circles["center_std"].apply(lambda x: x*t.ppf(0.90, 2))  # 90% CI
-
-        # fillna
-        circles.loc[circles["effective_radius_puncta"].isna(), "effective_radius_puncta"
-        ] = circles.loc[circles["effective_radius_puncta"].isna(), "area_sum"].apply(
+        puncta_short["center_std"] = np.sqrt(puncta_short["center_x_std"]**2+puncta_short["center_y_std"]**2)
+        puncta_short[f"effective_radius{suffix}"] = puncta_short["center_std"].apply(lambda x: x*t.ppf(0.90, 2))  # 90% CI
+        puncta_short.loc[puncta_short[f"effective_radius{suffix}"].isna(), f"effective_radius{suffix}"
+        ] = puncta_short.loc[puncta_short[f"effective_radius{suffix}"].isna(), "total_area"].apply(
             lambda x: np.sqrt(x/np.pi)
         )
-        circles["bounding_box_min_x"] = circles["center_x_mean"] - circles["effective_radius_puncta"]
-        circles["bounding_box_max_x"] = circles["center_x_mean"] + circles["effective_radius_puncta"]
-        circles["bounding_box_min_y"] = circles["center_y_mean"] - circles["effective_radius_puncta"]
-        circles["bounding_box_max_y"] = circles["center_y_mean"] + circles["effective_radius_puncta"]
 
-        return circles
+        return puncta_short
 
     else:
         raise ValueError("Choose one: ['min_vol_ellipse', 'confidence_ellipse', 'circle']")
 
-    return puncta
+    return puncta_short
 
 
 def two_pass_confidence_ellipse(puncta_short):
@@ -292,14 +290,14 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None, is_circle=
     if is_circle:
 
         circles_data = ellipses[
-            ["nuclei_object_number", "center_x_mean", "center_y_mean", "effective_radius_puncta"]
+            ["nuclei_object_number", "center_x_mean", "center_y_mean", "effective_radius_circle"]
         ]
         plot = plot_circle_using_bokeh(
             circles_data,
             circles_data,
             x='center_x_mean',
             y='center_y_mean',
-            size="effective_radius_puncta",
+            size="effective_radius_circle",
             text="nuclei_object_number",
             text_color='orange',
             fill_color='#097969',  # green

@@ -145,12 +145,12 @@ def min_vol_ellipse(P, tolerance=0.05, **kwargs):
     if eig_vals[0] <= eig_vals[1]:
         major_axis_length = 2/np.sqrt(eig_vals[1])
         minor_axis_length = 2/np.sqrt(eig_vals[0])
-        orientation = np.arcsin(eig_vecs[0, 1])/np.pi*180
+        orientation = -np.arcsin(eig_vecs[0, 1])/np.pi*180
     else:
         major_axis_length = 2/np.sqrt(eig_vals[0])
         minor_axis_length = 2/np.sqrt(eig_vals[1])
-        orientation = np.arccos(eig_vecs[0, 1])/np.pi*180
-        if orientation > 90:
+        orientation = -np.arccos(eig_vecs[0, 1])/np.pi*180
+        if orientation < -90:
             orientation = orientation - 180
 
     return center_x, center_y, major_axis_length, minor_axis_length, orientation
