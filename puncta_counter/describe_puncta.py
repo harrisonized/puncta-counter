@@ -210,7 +210,7 @@ def main(args=None):
         metric_cols = [
             'parent_manual_nuclei', 'puncta_object_number',
             'center_x_puncta', 'center_y_puncta',
-            'center_puncta_first_pass', 'integrated_intensity',
+            'center_puncta_first_pass', 'integrated_intensity', 'area',
             'center_x_second_pass', 'center_y_second_pass',
             'major_axis_length_second_pass', 'orientation_second_pass',
         ]

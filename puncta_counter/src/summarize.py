@@ -248,7 +248,8 @@ def cluster_doublets(doublets):
     ).to_list(), dtype=object)
 
     # construct final output array
-    list_cols = ['parent_manual_nuclei', 'puncta_object_number', 'center_x_puncta', 'center_y_puncta', 'integrated_intensity']
+    list_cols = ['parent_manual_nuclei', 'puncta_object_number',
+                 'center_x_puncta', 'center_y_puncta', 'integrated_intensity', 'area']
     singlets = doublets[
         ['image_number', 'nuclei_object_number']  # index cols
         + list_cols
