@@ -2,6 +2,8 @@
 # # ellipse_cols
 # # nuclei_cols
 # # puncta_cols
+# # ellipses_list_cols
+# # ellipses_single_value_cols
 
 
 ellipse_cols = ["center_x", "center_y", "major_axis_length", "minor_axis_length", "orientation"]
@@ -140,12 +142,42 @@ puncta_cols = [
     # "number_object_number",  # same as object_number 
 ]
 
-two_pass_ellipse_list_cols = [
-    'parent_manual_nuclei', 'puncta_object_number',
-    'center_x_puncta', 'center_y_puncta', 'integrated_intensity',
-    'center_puncta_first_pass', 'mahalanobis_coordinates_first_pass',
-    'mahalanobis_distances_first_pass', 'is_mahalanobis_outlier_first_pass',
-    'parent_manual_nuclei_second_pass', 'puncta_object_number_second_pass',
-    'center_x_puncta_second_pass', 'center_y_puncta_second_pass', 'integrated_intensity_second_pass',
-    'center_puncta_second_pass', 'mahalanobis_coordinates_second_pass',
-    'mahalanobis_distances_second_pass', 'is_mahalanobis_outlier_second_pass']
+
+ellipses_list_cols = [
+    "parent_manual_nuclei", "puncta_object_number",
+    "center_x_puncta", "center_y_puncta",
+    "integrated_intensity", "area",
+    "center_puncta_first_pass", "mahalanobis_coordinates_first_pass", "mahalanobis_distances_first_pass",
+    "is_mahalanobis_outlier_first_pass",
+    "parent_manual_nuclei_second_pass","puncta_object_number_second_pass",
+    "center_x_puncta_second_pass", "center_y_puncta_second_pass",
+    "integrated_intensity_second_pass",
+    "center_puncta_second_pass", "mahalanobis_coordinates_second_pass", "mahalanobis_distances_second_pass",
+    "is_mahalanobis_outlier_second_pass",
+    "diptest_mahalanobis_x",
+]
+
+
+ellipses_single_value_cols = [
+    "image_number",
+    "nuclei_object_number",
+    "center_x_first_pass",
+    "center_y_first_pass",
+    "major_axis_length_first_pass",
+    "minor_axis_length_first_pass",
+    "orientation_first_pass",
+    "num_puncta_first_pass",
+    "eccentricity_first_pass",
+    "any_mahalanobis_outlier_first_pass",
+    "center_x",
+    "center_y",
+    "major_axis_length",
+    "minor_axis_length",
+    "orientation",
+    "num_puncta_second_pass",
+    "eccentricity_second_pass",
+    "any_mahalanobis_outlier_second_pass",
+    "diptest_dip",
+    "diptest_pval",
+    "puncta_doublet",
+]

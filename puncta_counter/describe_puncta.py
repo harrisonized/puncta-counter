@@ -29,7 +29,7 @@ from puncta_counter.src.summarize import (generate_ellipse, two_pass_confidence_
 from puncta_counter.utils.common import dirname_n_times, dataframe_from_json, collapse_dataframe
 from puncta_counter.utils.plotting import save_plot_as_png
 from puncta_counter.utils.logger import configure_logger
-from puncta_counter.etc.columns import nuclei_cols, puncta_cols, ellipse_cols
+from puncta_counter.etc.columns import nuclei_cols, puncta_cols, ellipse_cols, ellipses_list_cols
 
 script_name = 'run_puncta_counter'
 this_dir = os.path.realpath(ospj(os.getcwd(), os.path.dirname(__file__)))
@@ -53,7 +53,7 @@ def parse_args(args=None):
                         required=False, help="input directory")
     parser.add_argument("-o", "--output", dest="output_dir", default='data', action="store",
                         required=False, help="output directory")
-    parser.add_argument("-s", "--save", dest="save", default=False, action="store_true",
+    parser.add_argument("-s", "--save", dest="save_data", default=False, action="store_true",
                         required=False, help="turn this on to output the intermediate csv files")
     parser.add_argument("-f", "--filter", dest="filter_file", default='config/exclusion_list.json', action="store",
                         required=False, help="json for filtering before final analysis")
@@ -63,7 +63,7 @@ def parse_args(args=None):
                                  # 'min_vol_ellipse',
                                  # 'circle',
                                 ],
-                        action="store", required=False, help="limit scope for testing")
+                        action="store", required=False, help="limit scope, comment out to disable")
 
     # other
     parser.add_argument("-l", "--log-dir", dest="log_dir", default='log', action="store",
@@ -152,7 +152,7 @@ def main(args=None):
     puncta_failed_qc = puncta[qc_cols].any(axis=1)
     problem_puncta, puncta_subset = puncta[puncta_failed_qc], puncta[~puncta_failed_qc].copy()
 
-    if args.save:
+    if args.save_data:
         problem_puncta.to_csv('data/troubleshooting/problem_puncta.csv', index=None)
         puncta_subset.to_csv('data/puncta_subset.csv', index=None)
 
@@ -170,7 +170,7 @@ def main(args=None):
     nuclei_failed_qc = nuclei[qc_cols].any(axis=1)
     problem_nuclei, nuclei_subset = nuclei[nuclei_failed_qc], nuclei[~nuclei_failed_qc].copy()
 
-    if args.save:
+    if args.save_data:
         problem_nuclei.to_csv('data/troubleshooting/problem_nuclei.csv', index=None)
         nuclei_subset.to_csv('data/nuclei_subset.csv', index=None)
 
@@ -224,13 +224,6 @@ def main(args=None):
         ellipses = pd.concat([ellipses[(ellipses['puncta_doublet']==False)], singlets])
         ellipses['cluster_id'].fillna(0, inplace=True)
 
-    if args.save:
-        # fix this later
-        # for col in two_pass_ellipse_cols:
-        #     puncta_short[col] = puncta_short[col].apply(json.dumps)
-        ellipses.to_csv('data/confidence_ellipse.csv', index=None)
-
-
     # ----------------------------------------------------------------------
     # Manual Filtering
 
@@ -270,9 +263,24 @@ def main(args=None):
 
     filename_for_image_number = dict(zip(nuclei_subset['image_number'], nuclei_subset['file_name_tif']))
 
-    logger.info(f"Plotting confidence_ellipse...")
+    logger.info(f"Plotting confidence ellipse...")
 
-    if 'confidence_ellipse' in args.algos:    
+    if args.save_data:
+        logger.info(f"Saving confidence ellipse data...")
+        for col in ellipses_list_cols:
+            ellipses[col] = (
+                ellipses[col]
+                .apply(lambda x: x.tolist() if isinstance(x, np.ndarray) else x)
+                .apply(lambda x: json.dumps(x) if isinstance(x, list) else str(x))
+            )
+        ellipses.to_csv('data/ellipses/confidence_ellipse.csv', index=None)
+        # use this to read in:
+        # ellipses = pd.read_csv('data/ellipses/confidence_ellipse.csv')
+        # for col in ellipses_list_cols:
+        #     ellipses[col] = ellipses[col].apply(lambda x: np.array(json.loads(x) if isinstance(x, str) else x))
+
+
+    if 'confidence_ellipse' in args.algos:
         ellipses.rename(columns=dict(zip([f'{col}_second_pass' for col in ellipse_cols], ellipse_cols)), inplace=True)
 
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
@@ -293,12 +301,13 @@ def main(args=None):
 
     if 'min_vol_ellipse' in args.algos:
 
-        logger.info(f"Generating minimum bounding ellipse...")
+        logger.info(f"Generating minimum volume ellipse...")
 
         ellipses = generate_ellipse(puncta_short, algo='min_vol_ellipse', suffix='_mve')
         ellipses.rename(columns=dict(zip([f'{col}_mve' for col in ellipse_cols], ellipse_cols)), inplace=True)
 
-        if args.save:
+        if args.save_data:
+            logger.info(f"Saving minimum volume ellipse data...")
             ellipses[['image_number', 'nuclei_object_number'] + ellipse_cols].to_csv(
                 'data/ellipses/min_vol_ellipse.csv', index=None
             )
@@ -321,10 +330,11 @@ def main(args=None):
 
     if 'circle' in args.algos:
 
-        logger.info(f"Generating gaussian circles...")
+        logger.info(f"Generating circles...")
         circles = generate_ellipse(puncta_short, algo='circle', suffix='_circle')
 
-        if args.save:
+        if args.save_data:
+            logger.info(f"Saving circle data...")
             circles[['image_number', "nuclei_object_number",
                      "center_x_mean", "center_y_mean",
                      "effective_radius_circle"]].to_csv('data/ellipses/circles.csv', index=None)
