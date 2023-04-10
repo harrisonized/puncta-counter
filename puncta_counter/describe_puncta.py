@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 
 """Takes nuclei.csv and puncta.csv files as inputs
-1. Computes metrics on nuclei
-2. Assigns puncta to nearest nuclei
-3. Computes metrics on puncta
-4. Splits nuclei into problem_nuclei and nuclei_subset (and same for puncta)
-5. Uses first pass confidence_ellipse to filter outliers
-6. Uses second pass confidence_ellipse to calculate diptest
-7. Plot confidence ellipse
+1. Reassigns puncta to nearest nuclei
+2. Filters nuclei and puncta that have anomalies (ie. doublets, high background, etc.)
+3. Collapse dataframes for ellipse algorithms
+4. Uses a two_pass_cofidence_ellipse algorithm to bound puncta with ellipses
+5. Uses diptest on the result to find doublets, then uses KMeans and two_pass_cofidence_ellipse to bound doublets
+6. Plots the resulting ellipse
+7. Minimum Volume Ellipse and Gaussian Circles are available, if wanted.
+
+As of April 9, 2023, the anomaly filtering is complete.
+The cleaned data is ready for use in downstream data analysis.
 """
 
 import os
