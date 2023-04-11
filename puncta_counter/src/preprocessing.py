@@ -18,13 +18,18 @@ def preprocess_df(df, columns):
 
     # clean column names
     df.columns = [camel_to_snake_case(col).replace("__", "_") for col in df.columns]
+
+    # replace extra prefixes and suffixes
     df.columns = [
         (camel_to_snake_case(col)
          .replace("area_shape_", "")
+         .replace('_masked_xist', "")
+         .replace('_xist', "")
+         .replace('_intensity', '')
          .replace('minimum', 'min')
          .replace("maximum", 'max')
-         .replace('_masked_xist', "")
-         .replace('_intensity', '')
+         .replace("parent_manual_nuclei", "parent_nuclei_object_number")
+         .replace('parent_filtered_nuclei', "parent_nuclei_object_number")
         )
         for col in df.columns
     ]
@@ -40,7 +45,7 @@ def preprocess_df(df, columns):
     return df_subset
 
 
-def reassign_puncta_to_nuclei(puncta, nuclei, extra_cols=[]):
+def merge_nuclei_and_puncta(puncta, nuclei, extra_cols=[], reassign_puncta=False):
     """If the nuclei and puncta were generated at different times, they could be numbered differently
     
     This uses the find_nearest_point algorithm to match each (center_x_puncta, center_y_puncta)
@@ -50,36 +55,48 @@ def reassign_puncta_to_nuclei(puncta, nuclei, extra_cols=[]):
     In general, this shouldn't be an issue.
     """
 
-    index_cols = ['image_number', 'parent_manual_nuclei']
+    index_cols = ['image_number', 'parent_nuclei_object_number']
     value_cols = [item for item in puncta.columns if item not in index_cols]
     puncta_short = collapse_dataframe(puncta, index_cols, value_cols)  # collapse so that each row is one cloud
     puncta_short['num_total_puncta_in_nucleus'] = puncta_short['puncta_object_number'].apply(len)
     puncta_short['mean_center_x_puncta'] = puncta_short['center_x'].apply(np.mean)
     puncta_short['mean_center_y_puncta'] = puncta_short['center_y'].apply(np.mean)
 
-    # use the find_nearest_point algorithm to find the center of the closest nuclei
-    # there are more nuclei than puncta, so this is fine
-    puncta_short[["_center_x_nuclei", "_center_y_nuclei"]] = pd.DataFrame(
-        puncta_short[["image_number", "mean_center_x_puncta", "mean_center_y_puncta"]].apply(
-        lambda x: find_nearest_point(
-            point=(x['mean_center_x_puncta'], x['mean_center_y_puncta']),
-            points=nuclei.loc[(nuclei["image_number"]==x["image_number"]),
-                              ["center_x", "center_y"]].to_records(index=False)
-        )
-        , axis=1).to_list(),
-        columns=["_center_x_nuclei", "_center_y_nuclei"],
-    )
+    if reassign_puncta:
 
-    # left join nuclei_table on closest_nuclei_x and closest_nuclei_y
-    puncta_short = pd.merge(
-        left=puncta_short,
-        right=nuclei[["image_number", "center_x", "center_y",
-                      "nuclei_object_number"]+extra_cols],
-        left_on=["image_number", "_center_x_nuclei", "_center_y_nuclei"],
-        right_on=["image_number", "center_x", "center_y"],
-        how="left",
-        suffixes=("", "_nuclei")
-    ).drop(columns=["_center_x_nuclei", "_center_y_nuclei"])
+        # use the find_nearest_point algorithm to find the center of the closest nuclei
+        # there are more nuclei than puncta, so this is fine
+        puncta_short[["_center_x_nuclei", "_center_y_nuclei"]] = pd.DataFrame(
+            puncta_short[["image_number", "mean_center_x_puncta", "mean_center_y_puncta"]].apply(
+            lambda x: find_nearest_point(
+                point=(x['mean_center_x_puncta'], x['mean_center_y_puncta']),
+                points=nuclei.loc[(nuclei["image_number"]==x["image_number"]),
+                                  ["center_x", "center_y"]].to_records(index=False)
+            )
+            , axis=1).to_list(),
+            columns=["_center_x_nuclei", "_center_y_nuclei"],
+        )
+
+        # left join nuclei_table on closest_nuclei_x and closest_nuclei_y
+        puncta_short = pd.merge(
+            left=puncta_short,
+            right=nuclei[["image_number", "center_x", "center_y", "nuclei_object_number"]+extra_cols],
+            left_on=["image_number", "_center_x_nuclei", "_center_y_nuclei"],
+            right_on=["image_number", "center_x", "center_y"],
+            how="left",
+            suffixes=("", "_nuclei")
+        ).drop(columns=["_center_x_nuclei", "_center_y_nuclei"])
+
+    else:
+
+        puncta_short = pd.merge(
+            left=puncta_short,
+            right=nuclei[["image_number", "center_x", "center_y", "nuclei_object_number"]+extra_cols],
+            left_on=["image_number", "parent_nuclei_object_number"],
+            right_on=["image_number", "nuclei_object_number"],
+            how="left",
+            suffixes=("", "_nuclei")
+        )
 
     puncta = expand_dataframe(puncta_short, value_cols)
     puncta = puncta.sort_values(['image_number', 'puncta_object_number']).reset_index(drop=True)

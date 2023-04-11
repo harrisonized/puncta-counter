@@ -169,7 +169,7 @@ def two_pass_confidence_ellipse(puncta_short):
     )
 
     # filter mahalanobis_outliers from first pass
-    cols = ['parent_manual_nuclei', 'puncta_object_number',
+    cols = ['parent_nuclei_object_number', 'puncta_object_number',
             'center_x_puncta', 'center_y_puncta', 'integrated_intensity']
     for col in cols:
         puncta_short[col] = puncta_short[col].apply(np.array)
@@ -248,7 +248,7 @@ def cluster_doublets(doublets):
     ).to_list(), dtype=object)
 
     # construct final output array
-    list_cols = ['parent_manual_nuclei', 'puncta_object_number',
+    list_cols = ['parent_nuclei_object_number', 'puncta_object_number',
                  'center_x_puncta', 'center_y_puncta', 'integrated_intensity', 'area']
     singlets = doublets[
         ['image_number', 'nuclei_object_number']  # index cols
@@ -260,7 +260,7 @@ def cluster_doublets(doublets):
 
     # grab only the items for the row
     singlets['kmeans_centroids'] = singlets[['kmeans_centroids', 'cluster_id']].apply(lambda x: x[0][x[1]], axis=1)
-    for metric in ['parent_manual_nuclei', 'puncta_object_number', 'integrated_intensity', 'center_x_puncta', 'center_y_puncta']:
+    for metric in ['parent_nuclei_object_number', 'puncta_object_number', 'integrated_intensity', 'center_x_puncta', 'center_y_puncta']:
         singlets[metric] = singlets[[metric, 'cluster_label', 'cluster_id']].apply(
             lambda x: x[metric][x['cluster_label']==x['cluster_id']], axis=1)
     singlets.drop(columns=['cluster_label'], inplace=True)

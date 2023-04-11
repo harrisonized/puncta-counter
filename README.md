@@ -12,8 +12,8 @@ In your command line, run:
 
 ```bash
 conda activate <your_env>
-cd puncta_counter
-python describe_puncta.py -a 'confidence_ellipse' 'min_vol_ellipse'
+cd path/to/puncta-counter
+python puncta_counter/describe_puncta.py -i nuclei.tsv puncta.tsv
 ```
 
 Note that to save Bokeh figures, you must install geckodriver, and this is separate from your conda environment:  `sudo apt-get install firefox-geckodriver`. Depending on how difficult it is for people to use Bokeh, I might switch to matplotlib, but this is not currently a priority.
@@ -31,8 +31,6 @@ Note that to save Bokeh figures, you must install geckodriver, and this is separ
 
 ## To Do
 
-1. Outlier detection
-2. Doublet detection and filtering
 3. Actual image quantification
 
 

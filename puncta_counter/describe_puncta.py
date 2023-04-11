@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 import diptest
 
-from puncta_counter.src.preprocessing import (preprocess_df, reassign_puncta_to_nuclei,
+from puncta_counter.src.preprocessing import (preprocess_df, merge_nuclei_and_puncta,
                                               compute_puncta_metrics, merge_exclusion_list)
 from puncta_counter.src.summarize import (generate_ellipse, two_pass_confidence_ellipse, 
                                           compute_diptest, cluster_doublets, plot_nuclei_ellipses_puncta)
@@ -49,15 +49,26 @@ warnings.filterwarnings("ignore", message="invalid value encountered in double_s
 
 
 def parse_args(args=None):
+    """If you're troubleshooting in your jupyter notebook, use the following code:
+
+    class Args:
+    def __init__(self, input):
+       self.input = input
+    args = Args(input=['nuclei.tsv', 'puncta.tsv'])
+
+    """
     parser = argparse.ArgumentParser(description="")
 
     # io
-    parser.add_argument("-i", "--input", dest="input_dir", default='data', action="store",
-                        required=False, help="input directory")
-    parser.add_argument("-o", "--output", dest="output_dir", default='data', action="store",
-                        required=False, help="output directory")
-    parser.add_argument("-s", "--save", dest="save_data", default=False, action="store_true",
-                        required=False, help="turn this on to output the intermediate csv files")
+    parser.add_argument("-i", "--input", dest="input", nargs='+', default=['nuclei.csv', 'puncta.csv'], action="store",
+                        required=False, help="input files, nuclei first, then puncta")
+    
+    parser.add_argument("-r", "--reassign", dest="reassign_puncta", default=True, action="store_false",
+                        required=False, help="disable this if you want to use the original labels that come with the puncta file")
+    
+    parser.add_argument("-s", "--save", dest="save_data", default=True, action="store_false",
+                        required=False, help="disable if you are troubleshooting")
+
     parser.add_argument("-f", "--filter", dest="filter_file", default='config/exclusion_list.json', action="store",
                         required=False, help="json for filtering before final analysis")
 
@@ -103,7 +114,9 @@ def main(args=None):
 
     # nuclei
     # note that for nuclei, image_number and nuclei_object_number uniquely defines the nuclei
-    nuclei = pd.read_csv("data/nuclei.csv")
+    ext = os.path.splitext(args.input[0])[1]
+    sep = '\t' if ext=='.tsv' else ','
+    nuclei = pd.read_csv(f"data/{args.input[0]}", sep=sep)
     nuclei.rename(columns={'ObjectNumber': 'NucleiObjectNumber'}, inplace=True)
     nuclei = preprocess_df(nuclei, nuclei_cols)  # rename columns and subset
 
@@ -120,14 +133,17 @@ def main(args=None):
 
     # puncta
     # note that for puncta, image_number and puncta_object_number uniquely defines the puncta
-    puncta = pd.read_csv("data/puncta.csv")
+    ext = os.path.splitext(args.input[1])[1]
+    sep = '\t' if ext=='.tsv' else ','
+    puncta = pd.read_csv(f"data/{args.input[1]}", sep=sep)
     puncta = puncta.rename(columns={'ObjectNumber': 'PunctaObjectNumber'})
     puncta = preprocess_df(puncta, puncta_cols)  # rename columns and subset
 
+
+    # if reassign_puncta==True:
     # collapse, reassign nuclei, bring in extra nuclei columns, then expand
-    # this algorithm has the potential to assign the same nuclei_object_number to two different parent_manual_nuclei
-    # also adds nuclei qc cols to puncta
-    puncta = reassign_puncta_to_nuclei(
+    # this algorithm has the potential to assign the same nuclei_object_number to two different parent_nuclei_object_number
+    puncta = merge_nuclei_and_puncta(
         puncta,
         nuclei.rename(
             columns={'potential_doublet': 'nuclei_potential_doublet',
@@ -137,11 +153,12 @@ def main(args=None):
             'path_name_tif', 'file_name_tif',
             "bounding_box_min_x", "bounding_box_max_x",
             "bounding_box_min_y", "bounding_box_max_y",
-            'nuclei_potential_doublet', 'nuclei_major_axis_too_long',]
+            'nuclei_potential_doublet', 'nuclei_major_axis_too_long',],
+        reassign_puncta=args.reassign_puncta
     )
 
     # 'puncta_out_of_bounds', 'num_clean_puncta_in_nucleus', 'high_background_puncta', 'fill_alpha'
-    puncta = compute_puncta_metrics(puncta)  
+    puncta = compute_puncta_metrics(puncta)
 
 
     # ----------------------------------------------------------------------
@@ -149,13 +166,13 @@ def main(args=None):
 
     logger.info(f"Splitting data...")
 
-
     # Split Puncta Data
     qc_cols = ['nuclei_potential_doublet', 'nuclei_major_axis_too_long', 'puncta_out_of_bounds', 'high_background_puncta']
     puncta_failed_qc = puncta[qc_cols].any(axis=1)
     problem_puncta, puncta_subset = puncta[puncta_failed_qc], puncta[~puncta_failed_qc].copy()
 
     if args.save_data:
+        os.makedirs('data/troubleshooting',  exist_ok=True)
         problem_puncta.to_csv('data/troubleshooting/problem_puncta.csv', index=None)
         puncta_subset.to_csv('data/puncta_subset.csv', index=None)
 
@@ -174,6 +191,7 @@ def main(args=None):
     problem_nuclei, nuclei_subset = nuclei[nuclei_failed_qc], nuclei[~nuclei_failed_qc].copy()
 
     if args.save_data:
+        os.makedirs('data/troubleshooting',  exist_ok=True)
         problem_nuclei.to_csv('data/troubleshooting/problem_nuclei.csv', index=None)
         nuclei_subset.to_csv('data/nuclei_subset.csv', index=None)
 
@@ -185,12 +203,11 @@ def main(args=None):
                      'center_y': 'center_y_puncta'}),
         index_cols=['image_number', 'nuclei_object_number'],
         value_cols=[
-            'parent_manual_nuclei', 'puncta_object_number',  # required map back to puncta_subset
+            'parent_nuclei_object_number', 'puncta_object_number',  # required map back to puncta_subset
             'center_x_puncta', 'center_y_puncta',
             'integrated_intensity', 'area'  # extra metrics go here 
         ]
     )
-
 
     # ----------------------------------------------------------------------
     # Generate Confidence Ellipse
@@ -208,7 +225,7 @@ def main(args=None):
         # Only 
         index_cols = ['image_number', 'nuclei_object_number']
         metric_cols = [
-            'parent_manual_nuclei', 'puncta_object_number',
+            'parent_nuclei_object_number', 'puncta_object_number',
             'center_x_puncta', 'center_y_puncta',
             'center_puncta_first_pass', 'integrated_intensity', 'area',
             'center_x_second_pass', 'center_y_second_pass',
@@ -276,6 +293,7 @@ def main(args=None):
                 .apply(lambda x: x.tolist() if isinstance(x, np.ndarray) else x)
                 .apply(lambda x: json.dumps(x) if isinstance(x, list) else str(x))
             )
+        os.makedirs('data/ellipses',  exist_ok=True)
         ellipses.to_csv('data/ellipses/confidence_ellipse.csv', index=None)
         # use this to read in:
         # ellipses = pd.read_csv('data/ellipses/confidence_ellipse.csv')
@@ -352,7 +370,6 @@ def main(args=None):
                 title=title,
                 is_circle=True
             )
-
             save_plot_as_png(plot, f"figures/circle/{title}.png")
 
     # ----------------------------------------------------------------------

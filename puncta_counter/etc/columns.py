@@ -65,7 +65,7 @@ nuclei_cols = [
 
 
 puncta_cols = [
-    "image_number", "puncta_object_number", "parent_manual_nuclei",  # index_cols
+    "image_number", "puncta_object_number", "parent_nuclei_object_number",  # index_cols
     
     # square areas
     "center_x",
@@ -144,12 +144,12 @@ puncta_cols = [
 
 
 ellipses_list_cols = [
-    "parent_manual_nuclei", "puncta_object_number",
+    "parent_nuclei_object_number", "puncta_object_number",
     "center_x_puncta", "center_y_puncta",
     "integrated_intensity", "area",
     "center_puncta_first_pass", "mahalanobis_coordinates_first_pass", "mahalanobis_distances_first_pass",
     "is_mahalanobis_outlier_first_pass",
-    "parent_manual_nuclei_second_pass","puncta_object_number_second_pass",
+    "parent_nuclei_object_number_second_pass","puncta_object_number_second_pass",
     "center_x_puncta_second_pass", "center_y_puncta_second_pass",
     "integrated_intensity_second_pass",
     "center_puncta_second_pass", "mahalanobis_coordinates_second_pass", "mahalanobis_distances_second_pass",
