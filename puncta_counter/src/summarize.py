@@ -7,10 +7,10 @@ import diptest
 from puncta_counter.utils.common import flatten_columns, expand_dataframe, collapse_dataframe
 from puncta_counter.utils.clustering_algos import two_cluster_kmeans
 from puncta_counter.utils.ellipse_algos import (confidence_ellipse, min_vol_ellipse,
-	                                            mahalanobis_transform, compute_euclidean_distance_from_origin)
+                                                mahalanobis_transform, compute_euclidean_distance_from_origin)
 from puncta_counter.utils.plotting import (plot_circle_using_bokeh,
                                            plot_ellipse_using_bokeh)
-from puncta_counter.etc.columns import ellipse_cols
+from puncta_counter.etc.columns import circle_cols, ellipse_cols, collapsed_metrics
 
 
 # Functions
@@ -169,9 +169,7 @@ def two_pass_confidence_ellipse(puncta_short):
     )
 
     # filter mahalanobis_outliers from first pass
-    cols = ['parent_nuclei_object_number', 'puncta_object_number',
-            'center_x_puncta', 'center_y_puncta', 'integrated_intensity']
-    for col in cols:
+    for col in collapsed_metrics:
         puncta_short[col] = puncta_short[col].apply(np.array)
         puncta_short[f'{col}_second_pass'] = puncta_short[
             [col, 'is_mahalanobis_outlier_first_pass']
@@ -248,19 +246,14 @@ def cluster_doublets(doublets):
     ).to_list(), dtype=object)
 
     # construct final output array
-    list_cols = ['parent_nuclei_object_number', 'puncta_object_number',
-                 'center_x_puncta', 'center_y_puncta', 'integrated_intensity', 'area']
-    singlets = doublets[
-        ['image_number', 'nuclei_object_number']  # index cols
-        + list_cols
-        + ['kmeans_centroids', 'cluster_label']  # kmeans outputs
-    ].copy()
+
+    singlets = doublets[index_cols + collapsed_metrics + ['kmeans_centroids', 'cluster_label']].copy()
     singlets['cluster_id'] = [[0, 1] for i in range(len(doublets))]
     singlets = singlets.explode('cluster_id')  # duplicate rows
 
     # grab only the items for the row
     singlets['kmeans_centroids'] = singlets[['kmeans_centroids', 'cluster_id']].apply(lambda x: x[0][x[1]], axis=1)
-    for metric in ['parent_nuclei_object_number', 'puncta_object_number', 'integrated_intensity', 'center_x_puncta', 'center_y_puncta']:
+    for metric in collapsed_metrics:
         singlets[metric] = singlets[[metric, 'cluster_label', 'cluster_id']].apply(
             lambda x: x[metric][x['cluster_label']==x['cluster_id']], axis=1)
     singlets.drop(columns=['cluster_label'], inplace=True)
@@ -290,9 +283,7 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None, is_circle=
 
     if is_circle:
 
-        circles_data = ellipses[
-            ["nuclei_object_number", "center_x_mean", "center_y_mean", "effective_radius_circle"]
-        ]
+        circles_data = ellipses[["nuclei_object_number"]+circle_cols]
         plot = plot_circle_using_bokeh(
             circles_data,
             circles_data,

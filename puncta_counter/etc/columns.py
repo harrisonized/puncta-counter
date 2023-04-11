@@ -1,14 +1,120 @@
 # Objects
+# # index_cols
+# # nuclei_qc_cols
+# # puncta_qc_cols
 # # ellipse_cols
-# # nuclei_cols
-# # puncta_cols
+# # two_pass_confidence_ellipse_metric_cols
+# # collapsed_metrics
 # # ellipses_list_cols
 # # ellipses_single_value_cols
+# # nuclei_cols
+# # puncta_cols
 
+
+index_cols = ['image_number', 'nuclei_object_number']
+
+extra_nuclei_cols = [
+    'path_name_tif', 'file_name_tif',
+    "bounding_box_min_x", "bounding_box_max_x",
+    "bounding_box_min_y", "bounding_box_max_y",
+    'nuclei_potential_doublet', 'nuclei_major_axis_too_long',
+]
+
+nuclei_qc_cols = ['potential_doublet', 'major_axis_too_long', 'high_background_puncta']
+
+# do not change the order of this
+puncta_qc_cols = [
+    'nuclei_potential_doublet',
+    'nuclei_major_axis_too_long',
+    'puncta_out_of_bounds',
+    'high_background_puncta'
+]
+
+
+# Scroll down to see original CellProfiler output columns
+
+
+# ----------------------------------------------------------------------
+# Ellipse columns
+
+circle_cols = ["center_x_mean", "center_y_mean", "effective_radius_circle"]
 
 ellipse_cols = ["center_x", "center_y", "major_axis_length", "minor_axis_length", "orientation"]
 
+
+two_pass_confidence_ellipse_metric_cols = [
+    'parent_nuclei_object_number', 'puncta_object_number',
+    'center_x_puncta', 'center_y_puncta',
+    'center_puncta_first_pass', 'integrated_intensity', 'area',
+    'center_x_second_pass', 'center_y_second_pass',
+    'major_axis_length_second_pass', 'orientation_second_pass',
+]
+
+collapsed_metrics = [
+    'parent_nuclei_object_number', 'puncta_object_number',  # required map back to puncta_subset
+    'center_x_puncta', 'center_y_puncta',
+    'integrated_intensity', 'area'  # extra metrics go here 
+]
+
+ellipses_list_cols = [
+    "parent_nuclei_object_number",
+    "puncta_object_number",
+    "center_x_puncta",
+    "center_y_puncta",
+    "integrated_intensity",
+    "area",
+    "center_puncta_first_pass",
+    "mahalanobis_coordinates_first_pass",
+    "mahalanobis_distances_first_pass",
+    "is_mahalanobis_outlier_first_pass",
+    "parent_nuclei_object_number_second_pass",
+    "puncta_object_number_second_pass",
+    "center_x_puncta_second_pass",
+    "center_y_puncta_second_pass",
+    "integrated_intensity_second_pass",
+    "center_puncta_second_pass",
+    "mahalanobis_coordinates_second_pass",
+    "mahalanobis_distances_second_pass",
+    "is_mahalanobis_outlier_second_pass",
+    "diptest_mahalanobis_x"
+]
+
+
+# unused for now
+ellipses_single_value_cols = [
+    'image_number',
+    'nuclei_object_number',
+    'center_x_first_pass',
+    'center_y_first_pass',
+    'major_axis_length_first_pass',
+    'minor_axis_length_first_pass',
+    'orientation_first_pass',
+    'num_puncta_first_pass',
+    'eccentricity_first_pass',
+    'any_mahalanobis_outlier_first_pass',
+    'center_x_second_pass',
+    'center_y_second_pass',
+    'major_axis_length_second_pass',
+    'minor_axis_length_second_pass',
+    'orientation_second_pass',
+    'num_puncta_second_pass',
+    'eccentricity_second_pass',
+    'any_mahalanobis_outlier_second_pass',
+    'diptest_dip',
+    'diptest_pval',
+    'puncta_doublet',
+    'kmeans_centroids',
+    'cluster_id'
+]
+
+
+
+# ----------------------------------------------------------------------
+# Original Columns
+
+
 nuclei_cols = [
+
     # index cols
     'image_number',
     'nuclei_object_number',
@@ -140,46 +246,4 @@ puncta_cols = [
     # "location_max_intensity_y",  # similar to center_y, but rounded
     # "location_max_intensity_z",  # always 0
     # "number_object_number",  # same as object_number 
-]
-
-
-ellipses_list_cols = [
-    "parent_nuclei_object_number", "puncta_object_number",
-    "center_x_puncta", "center_y_puncta",
-    "integrated_intensity", "area",
-    "center_puncta_first_pass", "mahalanobis_coordinates_first_pass", "mahalanobis_distances_first_pass",
-    "is_mahalanobis_outlier_first_pass",
-    "parent_nuclei_object_number_second_pass","puncta_object_number_second_pass",
-    "center_x_puncta_second_pass", "center_y_puncta_second_pass",
-    "integrated_intensity_second_pass",
-    "center_puncta_second_pass", "mahalanobis_coordinates_second_pass", "mahalanobis_distances_second_pass",
-    "is_mahalanobis_outlier_second_pass",
-    "diptest_mahalanobis_x",
-]
-
-
-ellipses_single_value_cols = [
-    'image_number',
-    'nuclei_object_number',
-    'center_x_first_pass',
-    'center_y_first_pass',
-    'major_axis_length_first_pass',
-    'minor_axis_length_first_pass',
-    'orientation_first_pass',
-    'num_puncta_first_pass',
-    'eccentricity_first_pass',
-    'any_mahalanobis_outlier_first_pass',
-    'center_x_second_pass',
-    'center_y_second_pass',
-    'major_axis_length_second_pass',
-    'minor_axis_length_second_pass',
-    'orientation_second_pass',
-    'num_puncta_second_pass',
-    'eccentricity_second_pass',
-    'any_mahalanobis_outlier_second_pass',
-    'diptest_dip',
-    'diptest_pval',
-    'puncta_doublet',
-    'kmeans_centroids',
-    'cluster_id'
 ]

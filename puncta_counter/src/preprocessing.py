@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from puncta_counter.etc.columns import puncta_cols
+from puncta_counter.etc.columns import index_cols, puncta_qc_cols
 from puncta_counter.utils.common import camel_to_snake_case
 from puncta_counter.utils.clustering_algos import find_nearest_point
 from puncta_counter.utils.common import collapse_dataframe, expand_dataframe
@@ -55,9 +55,10 @@ def merge_nuclei_and_puncta(puncta, nuclei, extra_cols=[], reassign_puncta=False
     In general, this shouldn't be an issue.
     """
 
-    index_cols = ['image_number', 'parent_nuclei_object_number']
-    value_cols = [item for item in puncta.columns if item not in index_cols]
-    puncta_short = collapse_dataframe(puncta, index_cols, value_cols)  # collapse so that each row is one cloud
+    puncta_index_cols = ['image_number', 'parent_nuclei_object_number']
+    value_cols = [item for item in puncta.columns if item not in puncta_index_cols]
+    
+    puncta_short = collapse_dataframe(puncta, puncta_index_cols, value_cols)  # collapse so that each row is one cloud
     puncta_short['num_total_puncta_in_nucleus'] = puncta_short['puncta_object_number'].apply(len)
     puncta_short['mean_center_x_puncta'] = puncta_short['center_x'].apply(np.mean)
     puncta_short['mean_center_y_puncta'] = puncta_short['center_y'].apply(np.mean)
@@ -80,7 +81,7 @@ def merge_nuclei_and_puncta(puncta, nuclei, extra_cols=[], reassign_puncta=False
         # left join nuclei_table on closest_nuclei_x and closest_nuclei_y
         puncta_short = pd.merge(
             left=puncta_short,
-            right=nuclei[["image_number", "center_x", "center_y", "nuclei_object_number"]+extra_cols],
+            right=nuclei[index_cols+["center_x", "center_y"]+extra_cols],
             left_on=["image_number", "_center_x_nuclei", "_center_y_nuclei"],
             right_on=["image_number", "center_x", "center_y"],
             how="left",
@@ -91,15 +92,15 @@ def merge_nuclei_and_puncta(puncta, nuclei, extra_cols=[], reassign_puncta=False
 
         puncta_short = pd.merge(
             left=puncta_short,
-            right=nuclei[["image_number", "center_x", "center_y", "nuclei_object_number"]+extra_cols],
+            right=nuclei[index_cols+["center_x", "center_y"]+extra_cols],
             left_on=["image_number", "parent_nuclei_object_number"],
-            right_on=["image_number", "nuclei_object_number"],
+            right_on=index_cols,
             how="left",
             suffixes=("", "_nuclei")
         )
 
     puncta = expand_dataframe(puncta_short, value_cols)
-    puncta = puncta.sort_values(['image_number', 'puncta_object_number']).reset_index(drop=True)
+    puncta = puncta.sort_values(puncta_index_cols).reset_index(drop=True)
 
     return puncta
 
@@ -117,11 +118,10 @@ def compute_puncta_metrics(puncta):
         (puncta["center_y"] > puncta["bounding_box_max_y_nuclei"]))
 
     # find background puncta
-    index_cols = ['image_number', 'nuclei_object_number']
-    qc_flags = ['nuclei_potential_doublet', 'nuclei_major_axis_too_long', 'puncta_out_of_bounds']
+    # puncta_qc_cols[0:3] = ['nuclei_potential_doublet', 'nuclei_major_axis_too_long', 'puncta_out_of_bounds']
     puncta.set_index(index_cols, inplace=True)
     puncta['num_clean_puncta_in_nucleus'] = (puncta
-        .loc[(puncta[qc_flags].any(axis=1)==False)]
+        .loc[(puncta[puncta_qc_cols[0:3]].any(axis=1)==False)]
         .groupby(index_cols)['puncta_object_number']
         .count()
     )
@@ -142,7 +142,6 @@ def compute_puncta_metrics(puncta):
 def merge_exclusion_list(df, exclusion_list):
     """Convenience function, because you cannot set a dataframe from a for loop
     """
-    index_cols = ['image_number', 'nuclei_object_number']
     df = pd.merge(
         df, exclusion_list[index_cols+['manually_exclude']],
         left_on=index_cols, right_on=index_cols, how='left'
