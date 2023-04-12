@@ -67,6 +67,7 @@ def parse_args(args=None):
     # io
     parser.add_argument("-i", "--input", dest="input", nargs='+', default=['nuclei.csv', 'puncta.csv'], action="store",
                         required=False, help="input files, nuclei first, then puncta")
+    
     parser.add_argument("-f", "--filter", dest="filter_file", default='config/exclusion_list.json', action="store",
                         required=False, help="json for filtering before final analysis")
 
@@ -75,14 +76,15 @@ def parse_args(args=None):
     parser.add_argument("-r", "--reassign", dest="reassign_puncta", default=True, action="store_false",
                         required=False, help="disable this if you want to use the original labels that come with the puncta file")
 
-    parser.add_argument("-s", "--save", dest="save_data", default=False, action="store_true",
-                        required=False, help="use this to save the intermediate csv files")
+    parser.add_argument("-s", "--save", dest="save_data", default=True, action="store_false",
+                        required=False, help="use this to disable saving csv files for troubleshooting")
+
     parser.add_argument("-a", "--algos", dest="algos", nargs='+',
-                        default=['confidence_ellipse',  # enable this to be disabled
+                        default=['confidence_ellipse',
                                  # 'min_vol_ellipse',
                                  # 'circle',
                                 ],
-                        action="store", required=False, help="limit scope, comment out to disable")
+                        action="store", required=False, help="just in case you wanted to plot more than confidence ellipse")
 
     # other
     parser.add_argument("-l", "--log-dir", dest="log_dir", default='log', action="store",
@@ -113,9 +115,9 @@ def main(args=None):
 
 
     # ----------------------------------------------------------------------
-    # Preprocess Nuclei Data
+    # Preprocess Data
 
-    logger.info(f"Preprocessing nuclei...")
+    logger.info(f"Preprocessing data...")
 
     # nuclei
     # note that for nuclei, image_number and nuclei_object_number uniquely defines the nuclei
@@ -130,11 +132,6 @@ def main(args=None):
     nuclei['potential_doublet'] = (nuclei['eccentricity'] >= 0.69)  # eccentricity threshold
     nuclei['major_axis_too_long'] = (nuclei['major_axis_length'] >= 128)  # cells aren't this big
     
-
-    # ----------------------------------------------------------------------
-    # Preprocess Puncta Data
-
-    logger.info(f"Preprocessing puncta...")
 
     # puncta
     # note that for puncta, image_number and puncta_object_number uniquely defines the puncta
@@ -207,89 +204,104 @@ def main(args=None):
     # ----------------------------------------------------------------------
     # Confidence Ellipse
 
+
+    logger.info(f"Generating bounding ellipses...")
+
+    ellipses = generate_ellipse(puncta_short, algo='min_vol_ellipse', suffix='_mve')  # minimum volume ellipses
+    ellipses = two_pass_confidence_ellipse(puncta_short)  # generate confidence ellipse
+    ellipses = compute_diptest(ellipses)
+
+
+    # ----------------------------------------------------------------------
+    # Doublet Detection
+    
+    if (ellipses['puncta_doublet']==True).any():
+
+        logger.info(f"Clustering doublets...")
+
+        doublets = ellipses.loc[
+            (ellipses['puncta_doublet']==True),
+            index_cols+two_pass_confidence_ellipse_metric_cols
+        ]  # select doublets
+        # need [[0, 1], [2, 3], [4, 5]], not [[0, 2, 4], [1, 3, 5]]
+        doublets['center_puncta_first_pass'] = doublets['center_puncta_first_pass'].apply(np.transpose)
+        
+        # Run Kmeans to split the doublets
+        singlets = cluster_doublets(doublets)
+        singlets = two_pass_confidence_ellipse(singlets)  # rerun confidence ellipse algo on singlets
+        singlets = compute_diptest(singlets)  # in the future, if you want to make this recursive
+
+        # merge back to original data
+        ellipses = pd.concat([ellipses[(ellipses['puncta_doublet']==False)], singlets])
+        ellipses['cluster_id'].fillna(0, inplace=True)
+
+
+    # ----------------------------------------------------------------------
+    # Manual Filtering
+
+    if os.path.isfile(args.filter_file):
+
+        logger.info(f"Manually filtering data...")
+
+        image_number_for_filename = dict(
+            zip(nuclei_subset['file_name_tif'].apply(lambda x: os.path.splitext(x)[0]),
+                nuclei_subset['image_number'])
+        )
+        
+        # read data
+        with open(args.filter_file, "r") as f:
+            exclusion_list_json = json.load(f)
+
+        # Construct exclusion list dataframe
+        exclusion_list = dataframe_from_json(exclusion_list_json, colnames=['filename', 'nuclei_object_number'])
+        exclusion_list['image_number'] = (
+            exclusion_list['filename']
+            .apply(lambda x: os.path.splitext(x)[0])
+            .apply(lambda x: image_number_for_filename.get(x))
+        )
+        exclusion_list['manually_exclude'] = True
+
+        # filter
+        nuclei_subset = merge_exclusion_list(nuclei_subset, exclusion_list)
+        nuclei_subset = nuclei_subset[(nuclei_subset['manually_exclude']==False)].copy()
+        ellipses = merge_exclusion_list(ellipses, exclusion_list)
+        ellipses = ellipses[(ellipses['manually_exclude']==False)].copy()
+        puncta_subset = merge_exclusion_list(puncta_subset, exclusion_list)
+        puncta_subset = puncta_subset[(puncta_subset['manually_exclude']==False)].copy()
+
+
+    # ----------------------------------------------------------------------
+    # Export data
+
+    logger.info(f"Saving ellipse data...")
+
+
+    if args.save_data:
+        
+        for col in ellipses_list_cols:
+            ellipses[col] = (
+                ellipses[col]
+                .apply(lambda x: x.tolist() if isinstance(x, np.ndarray) else x)
+                .apply(lambda x: json.dumps(x) if isinstance(x, list) else str(x))
+            )  # jsonify
+        
+        os.makedirs('data/ellipses',  exist_ok=True)
+        ellipses.to_csv('data/ellipses/confidence_ellipse.csv', index=None)
+        
+        for col in ellipses_list_cols:
+            ellipses[col] = (
+                ellipses[col]
+                .apply(lambda x: np.array(json.loads(x) if isinstance(x, str) else x))
+            )  # undo jsonify
+
+
+    # ----------------------------------------------------------------------
+    # Plot Confidence Ellipse
+
+
     if 'confidence_ellipse' in args.algos:
 
-        logger.info(f"Generating confidence ellipses...")
-
-        ellipses = two_pass_confidence_ellipse(puncta_short)  # generate ellipses
-        ellipses = compute_diptest(ellipses)
-
-        # ----------------------------------------------------------------------
-        # Doublet Detection
-        
-        if (ellipses['puncta_doublet']==True).any():
-
-            logger.info(f"Clustering doublets...")
-
-            doublets = ellipses.loc[
-                (ellipses['puncta_doublet']==True),
-                index_cols+two_pass_confidence_ellipse_metric_cols
-            ]  # select doublets
-            # need [[0, 1], [2, 3], [4, 5]], not [[0, 2, 4], [1, 3, 5]]
-            doublets['center_puncta_first_pass'] = doublets['center_puncta_first_pass'].apply(np.transpose)
-            
-            # Run Kmeans to split the doublets
-            singlets = cluster_doublets(doublets)
-            singlets = two_pass_confidence_ellipse(singlets)  # rerun confidence ellipse algo on singlets
-            singlets = compute_diptest(singlets)  # in the future, if you want to make this recursive
-
-            # merge back to original data
-            ellipses = pd.concat([ellipses[(ellipses['puncta_doublet']==False)], singlets])
-            ellipses['cluster_id'].fillna(0, inplace=True)
-
-        # ----------------------------------------------------------------------
-        # Manual Filtering
-
-        if os.path.isfile(args.filter_file):
-
-            logger.info(f"Manually filtering data...")
-
-            image_number_for_filename = dict(
-                zip(nuclei_subset['file_name_tif'].apply(lambda x: os.path.splitext(x)[0]),
-                    nuclei_subset['image_number'])
-            )
-            
-            # read data
-            with open(args.filter_file, "r") as f:
-                exclusion_list_json = json.load(f)
-
-            # Construct exclusion list dataframe
-            exclusion_list = dataframe_from_json(exclusion_list_json, colnames=['filename', 'nuclei_object_number'])
-            exclusion_list['image_number'] = (
-                exclusion_list['filename']
-                .apply(lambda x: os.path.splitext(x)[0])
-                .apply(lambda x: image_number_for_filename.get(x))
-            )
-            exclusion_list['manually_exclude'] = True
-
-            # filter
-            nuclei_subset = merge_exclusion_list(nuclei_subset, exclusion_list)
-            nuclei_subset = nuclei_subset[(nuclei_subset['manually_exclude']==False)].copy()
-            ellipses = merge_exclusion_list(ellipses, exclusion_list)
-            ellipses = ellipses[(ellipses['manually_exclude']==False)].copy()
-            puncta_subset = merge_exclusion_list(puncta_subset, exclusion_list)
-            puncta_subset = puncta_subset[(puncta_subset['manually_exclude']==False)].copy()
-
-        # ----------------------------------------------------------------------
-        # Plot
-
         logger.info(f"Plotting confidence ellipse...")
-
-        if args.save_data:
-            logger.info(f"Saving confidence ellipse data...")
-            for col in ellipses_list_cols:
-                ellipses[col] = (
-                    ellipses[col]
-                    .apply(lambda x: x.tolist() if isinstance(x, np.ndarray) else x)
-                    .apply(lambda x: json.dumps(x) if isinstance(x, list) else str(x))
-                )
-            os.makedirs('data/ellipses',  exist_ok=True)
-            ellipses.to_csv('data/ellipses/confidence_ellipse.csv', index=None)
-            # use this to read in:
-            # ellipses = pd.read_csv('data/ellipses/confidence_ellipse.csv')
-            # for col in ellipses_list_cols:
-            #     ellipses[col] = ellipses[col].apply(lambda x: np.array(json.loads(x) if isinstance(x, str) else x))
-
 
         ellipses.rename(columns=dict(zip([f'{col}_second_pass' for col in ellipse_cols], ellipse_cols)), inplace=True)
         
@@ -311,16 +323,9 @@ def main(args=None):
 
     if 'min_vol_ellipse' in args.algos:
 
-        logger.info(f"Generating minimum volume ellipse...")
+        logger.info(f"Plotting min vol ellipses...")
 
-        ellipses = generate_ellipse(puncta_short, algo='min_vol_ellipse', suffix='_mve')
         ellipses.rename(columns=dict(zip([f'{col}_mve' for col in ellipse_cols], ellipse_cols)), inplace=True)
-
-        if args.save_data:
-            logger.info(f"Saving minimum volume ellipse data...")
-            ellipses[['image_number', 'nuclei_object_number'] + ellipse_cols].to_csv(
-                'data/ellipses/min_vol_ellipse.csv', index=None
-            )
 
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
             title = filename_for_image_number[image_number].split('.')[0]
@@ -334,20 +339,21 @@ def main(args=None):
 
             save_plot_as_png(plot, f"figures/min_vol_ellipse/{title}.png")
 
+
     # ----------------------------------------------------------------------
     # Circles
-    # This should be deprecated. I'm making it available for now just for comparison.
+    # This should be deprecated. This was used in the first version to create the bokeh plots
 
     if 'circle' in args.algos:
 
-        logger.info(f"Generating circles...")
+        logger.info(f"Plotting circles...")
+
         circles = generate_ellipse(puncta_short, algo='circle', suffix='_circle')
 
         if args.save_data:
             logger.info(f"Saving circle data...")
-            circles[['image_number', "nuclei_object_number",
-                     "center_x_mean", "center_y_mean",
-                     "effective_radius_circle"]].to_csv('data/ellipses/circles.csv', index=None)
+            circles[index_cols + circle_cols].to_csv('data/ellipses/circles.csv', index=None)
+
 
         for image_number in tqdm(nuclei_subset['image_number'].unique()):
             title = filename_for_image_number[image_number].split('.')[0]
@@ -360,6 +366,7 @@ def main(args=None):
                 is_circle=True
             )
             save_plot_as_png(plot, f"figures/circle/{title}.png")
+
 
     # ----------------------------------------------------------------------
     # End

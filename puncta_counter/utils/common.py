@@ -65,6 +65,7 @@ def dataframe_from_json(json, colnames=[],):
     """
     df = pd.DataFrame.from_dict(json.items())
     df = df.explode(1)
+    df.reset_index(drop=True, inplace=True)
     
     if len(colnames)>0:
         df.rename(columns=dict(zip(list(df.columns), colnames)), inplace=True)

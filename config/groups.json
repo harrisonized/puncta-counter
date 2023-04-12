@@ -1,0 +1,34 @@
+{
+    "WT, 18 hours post-stim": [
+        "sSP67_18_B6_CRE_001.tif",
+        "sSP67_18_B6_CRE_002.tif",
+        "sSP67_18_B6_CRE_003.tif",
+        "sSP67_18_B6_CRE_007.tif"
+    ],
+    "Satb1 fl/fl CRE, 18 hours post-stim": [
+        "sSP71_18_SAT_CRE_003.tif",
+        "sSP71_18_SAT_CRE_004.tif",
+        "sSP71_18_SAT_CRE_006.tif"
+    ],
+    "WT, 24 hours post-stim": [
+        "sSP79_24_B6_CRE_001.tif",
+        "sSP79_24_B6_CRE_002.tif",
+        "sSP79_24_B6_CRE_003.tif",
+        "sSP79_24_B6_CRE_004.tif",
+        "sSP79_24_B6_CRE_005.tif"
+    ],
+    "Satb1 fl/fl CRE, 24 hours post-stim": [
+        "sSP83_24_SAT_CRE_002.tif",
+        "sSP83_24_SAT_CRE_003.tif"
+    ],
+    "WT, 48 hours post-stim": [
+        "sSP91_48_B6_CRE_001.tif",
+        "sSP91_48_B6_CRE_002.tif",
+        "sSP91_48_B6_CRE_004.tif",
+        "sSP91_48_B6_CRE_006.tif"
+    ],
+    "Satb1 fl/fl CRE, 48 hours post-stim": [
+        "sSP95_48_SAT_CRE_003.tif",
+        "sSP95_48_SAT_CRE_004.tif"
+    ]
+}
