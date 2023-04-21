@@ -281,41 +281,43 @@ def plot_nuclei_ellipses_puncta(nuclei, ellipses, puncta, title=None, is_circle=
         fill_color='#000fff',  # blue
     )
 
-    if is_circle:
+    if ellipses is not None:
 
-        circles_data = ellipses[["nuclei_object_number"]+circle_cols]
-        plot = plot_circle_using_bokeh(
-            circles_data,
-            circles_data,
-            x='center_x_mean',
-            y='center_y_mean',
-            size="effective_radius_circle",
-            text="nuclei_object_number",
-            text_color='orange',
-            fill_color='#097969',  # green
-            line_alpha=0,
-            plot=plot
-        )
+        if is_circle:
 
-    else:
-        # confidence_ellipse
-        ellipses_data = ellipses[["nuclei_object_number"]+ellipse_cols]
-        plot = plot_ellipse_using_bokeh(
-            ellipses_data,
-            ellipses_data,
-            x='center_x',
-            y='center_y',
-            height="major_axis_length",
-            width="minor_axis_length",
-            angle="orientation",
-            angle_units='deg',
-            text="nuclei_object_number",
-            text_color='orange',
-            fill_color='#097969',  # green
-            fill_alpha=0.9,
-            line_alpha=0,
-            plot=plot
-        )
+            circles_data = ellipses[["nuclei_object_number"]+circle_cols]
+            plot = plot_circle_using_bokeh(
+                circles_data,
+                circles_data,
+                x='center_x_mean',
+                y='center_y_mean',
+                size="effective_radius_circle",
+                text="nuclei_object_number",
+                text_color='orange',
+                fill_color='#097969',  # green
+                line_alpha=0,
+                plot=plot
+            )
+
+        else:
+            # confidence_ellipse
+            ellipses_data = ellipses[["nuclei_object_number"]+ellipse_cols]
+            plot = plot_ellipse_using_bokeh(
+                ellipses_data,
+                ellipses_data,
+                x='center_x',
+                y='center_y',
+                height="major_axis_length",
+                width="minor_axis_length",
+                angle="orientation",
+                angle_units='deg',
+                text="nuclei_object_number",
+                text_color='orange',
+                fill_color='#097969',  # green
+                fill_alpha=0.9,
+                line_alpha=0,
+                plot=plot
+            )
 
     # puncta
     puncta_data = puncta[["nuclei_object_number"] + ellipse_cols + ["fill_alpha"]]

@@ -80,9 +80,10 @@ def parse_args(args=None):
                         required=False, help="use this to disable saving csv files for troubleshooting")
 
     parser.add_argument("-a", "--algos", dest="algos", nargs='+',
-                        default=['confidence_ellipse',
+                        default=[# 'confidence_ellipse',
                                  # 'min_vol_ellipse',
                                  # 'circle',
+                                 'empty'
                                 ],
                         action="store", required=False, help="just in case you wanted to plot more than confidence ellipse")
 
@@ -366,6 +367,27 @@ def main(args=None):
                 is_circle=True
             )
             save_plot_as_png(plot, f"figures/circle/{title}.png")
+
+
+    # ----------------------------------------------------------------------
+    # Empty
+    # In case you didn't want any boundaries
+
+    if 'empty' in args.algos:
+
+        logger.info(f"Plotting empty...")
+
+        for image_number in tqdm(nuclei_subset['image_number'].unique()):
+            title = filename_for_image_number[image_number].split('.')[0]
+
+            plot = plot_nuclei_ellipses_puncta(
+                nuclei=nuclei_subset.loc[(nuclei_subset['image_number']==image_number)],
+                ellipses=None,
+                puncta=puncta_subset.loc[(puncta_subset['image_number']==image_number)],
+                title=title,
+                is_circle=True
+            )
+            save_plot_as_png(plot, f"figures/empty/{title}.png")
 
 
     # ----------------------------------------------------------------------
