@@ -10,7 +10,7 @@ from puncta_counter.utils.ellipse_algos import (confidence_ellipse, min_vol_elli
                                                 mahalanobis_transform, compute_euclidean_distance_from_origin)
 from puncta_counter.utils.plotting import (plot_circle_using_bokeh,
                                            plot_ellipse_using_bokeh)
-from puncta_counter.etc.columns import circle_cols, ellipse_cols, collapsed_metrics
+from puncta_counter.etc.columns import index_cols, circle_cols, ellipse_cols, collapsed_metrics
 
 
 # Functions
@@ -62,7 +62,7 @@ def generate_ellipse(
         suffix='',
         aweights=None,
         n_std=1,
-        mahalanobis_threshold = 1.5,
+        mahalanobis_threshold = 1.2,
         # algo='min_vol_ellipse'
         tolerance=0.01,
     ):
@@ -165,6 +165,7 @@ def two_pass_confidence_ellipse(puncta_short):
     ].apply(lambda x: x if isinstance(x, np.ndarray) else np.array(list(x)), axis=1)
     puncta_short = generate_ellipse(
         puncta_short,
+        n_std=1,
         suffix='_first_pass'
     )
 
@@ -182,7 +183,7 @@ def two_pass_confidence_ellipse(puncta_short):
     puncta_short = generate_ellipse(
         puncta_short,
         aweights='integrated_intensity_second_pass',
-        n_std=2,
+        n_std=1.5,
         suffix='_second_pass'
     )
 

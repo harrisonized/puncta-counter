@@ -35,7 +35,9 @@ from puncta_counter.utils.logger import configure_logger
 from puncta_counter.etc.columns import (index_cols, collapsed_metrics,
                                         nuclei_cols, nuclei_qc_cols, extra_nuclei_cols,
                                         puncta_cols, puncta_qc_cols,
-                                        ellipse_cols, ellipses_list_cols)
+                                        ellipse_cols, ellipses_list_cols,
+                                        two_pass_confidence_ellipse_metric_cols
+                                        )
 
 script_name = 'run_puncta_counter'
 this_dir = os.path.realpath(ospj(os.getcwd(), os.path.dirname(__file__)))
@@ -80,10 +82,10 @@ def parse_args(args=None):
                         required=False, help="use this to disable saving csv files for troubleshooting")
 
     parser.add_argument("-a", "--algos", dest="algos", nargs='+',
-                        default=[# 'confidence_ellipse',
+                        default=['confidence_ellipse',
                                  # 'min_vol_ellipse',
                                  # 'circle',
-                                 'empty'
+                                 # 'empty'
                                 ],
                         action="store", required=False, help="just in case you wanted to plot more than confidence ellipse")
 
@@ -219,6 +221,8 @@ def main(args=None):
     if (ellipses['puncta_doublet']==True).any():
 
         logger.info(f"Clustering doublets...")
+        logger.info(f"Number of doublets: " + str(int(ellipses['puncta_doublet'].sum())))
+        print(ellipses[(ellipses['puncta_doublet']==True)])
 
         doublets = ellipses.loc[
             (ellipses['puncta_doublet']==True),
